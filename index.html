@@ -601,7 +601,7 @@ const Admin={
     const list=Object.entries(accs).sort((a,b)=>b[1].createdAt-a[1].createdAt);
     document.getElementById('users-inner').innerHTML=`
       <div class="section-title">👥 用户列表 (${list.length})</div>
-      ${list.map(([id,a])=>`<div class="user-row"><div><div style="font-weight:600">${id}</div><div style="font-size:11px;color:var(--text3)">注册: ${new Date(a.createdAt).toLocaleDateString()}</div></div><div style="text-align:right"><div style="color:var(--gold);font-weight:600">${a.gold||0} 🪙</div><div style="font-size:11px;color:var(--text3)}>${a.stats.totalGames||0}局 · 完美率${a.stats.totalGames?Math.round((a.stats.perfects||0)/a.stats.totalGames*100):0}%</div></div></div>`).join('')}`;
+      ${list.map(([id,a])=>`<div class="user-row"><div><div style="font-weight:600">${id}</div><div style="font-size:11px;color:var(--text3)">注册: ${new Date(a.createdAt).toLocaleDateString()}</div></div><div style="text-align:right"><div style="color:var(--gold);font-weight:600">${a.gold||0} 🪙</div><div style="font-size:11px;color:var(--text3)">${a.stats.totalGames||0}局 · 完美率${a.stats.totalGames?Math.round((a.stats.perfects||0)/a.stats.totalGames*100):0}%</div></div></div>`).join('')}`;
   },
 
   renderTransactions(){
@@ -788,7 +788,7 @@ const CS={
 const Game={
   VISIBLE_FLOORS:10,MAX_FLOOR:18,TARGET_MIN:3,GRIDS_PER_FLOOR:5,COST:10,
   state:'idle',targetFloor:0,targetSubGrid:0,targetGrid:0,elevatorGrid:0,speed:0,animId:null,lastTime:0,cameraGrid:0,stopped:false,combo:0,
-  canvas:null,ctx:null,canvasW:0,canvasH:0,floorH:0,gridH:0,_font:'',_ph:null,_ch:null,
+  canvas:null,ctx:null,canvasW:0,canvasH:0,floorH:0,gridH:0,_font:'',
 
   start(){
     if(this.state==='rising'||this.state==='stopping')return;
@@ -819,7 +819,7 @@ const Game={
     // Event handled by permanent listener on canvas-wrap (see init)
   },
 
-  stopElevator(cx,cy){
+  stopElevator(){
     if(this.stopped)return;this.stopped=true;this.state='stopping';
     const stoppedGrid=Math.round(this.elevatorGrid);const diff=Math.abs(stoppedGrid-this.targetGrid);
     let reward=0,type='';if(diff===0){reward=50;type='perfect'}else if(diff===1){reward=20;type='good'}else if(diff===2){reward=5;type='ok'}else{reward=0;type='fail'}
@@ -857,7 +857,7 @@ const Game={
     if(this.state==='rising'){
       this.elevatorGrid+=this.speed*dt;
       const maxGrid=(this.MAX_FLOOR-1)*this.GRIDS_PER_FLOOR+this.GRIDS_PER_FLOOR-1;
-      if(this.elevatorGrid>=maxGrid&&!this.stopped)this.stopElevator(0,0);
+      if(this.elevatorGrid>=maxGrid&&!this.stopped)this.stopElevator();
     }
     const vpGrids=this.VISIBLE_FLOORS*this.GRIDS_PER_FLOOR;let tc=this.elevatorGrid-vpGrids*.32;const pad=2;tc=Math.max(-pad,tc);const maxCam=(this.MAX_FLOOR-1)*this.GRIDS_PER_FLOOR+this.GRIDS_PER_FLOOR-vpGrids+pad;tc=Math.min(tc,maxCam);this.cameraGrid+=(tc-this.cameraGrid)*.12;
     document.getElementById('hud-current').textContent=(this.elevatorGrid/this.GRIDS_PER_FLOOR+1).toFixed(2)+'F';
@@ -900,7 +900,8 @@ const Game={
     if(Game.state!=='rising')return;
     Game.stopElevator();
   });
-  document.getElementById('app').addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
+  // Only prevent scrolling on game canvas, not the whole app
+  document.getElementById('canvas-wrap').addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
   const last=S.getLast();if(last)document.getElementById('login-account').value=last;
 })();
 </script>
