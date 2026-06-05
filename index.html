@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>电梯停靠</title>
+<style>
+/* ===== CSS VARIABLES ===== */
+:root {
+  --bg: #0B0E14;
+  --card: #161A23;
+  --card2: #1C2030;
+  --border: #2B3139;
+  --blue: #3B7CFF;
+  --blue2: #2563EB;
+  --gold: #F0B90B;
+  --green: #00C853;
+  --orange: #FF9100;
+  --red: #FF3D57;
+  --text: #EAECEF;
+  --text2: #848E9C;
+  --text3: #5E6673;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-xs: 8px;
+  --font: -apple-system,"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif;
+}
+
+/* ===== RESET ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;color:var(--text);font-family:var(--font);font-size:14px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+body{display:flex;justify-content:center;align-items:center}
+
+#app{
+  width:100%;max-width:420px;height:100vh;max-height:900px;
+  position:relative;overflow:hidden;background:var(--bg);
+}
+
+/* ===== SCREENS ===== */
+.screen{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  display:none;flex-direction:column;overflow-y:auto;overflow-x:hidden;
+  background:var(--bg);
+  transform:translateX(0);opacity:1;
+  will-change:transform,opacity;
+}
+.screen.active{display:flex}
+.screen.slide-in{animation:slideIn .28s cubic-bezier(.22,.61,.36,1) forwards}
+.screen.slide-out{animation:slideOut .18s cubic-bezier(.55,.06,.68,.19) forwards}
+@keyframes slideIn{from{transform:translateX(30px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes slideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(-30px);opacity:0}}
+
+/* ===== COMPONENTS ===== */
+.btn{
+  display:block;width:100%;padding:14px;border:none;border-radius:var(--radius-sm);
+  font-family:var(--font);font-size:15px;font-weight:600;cursor:pointer;
+  text-align:center;color:#fff;background:linear-gradient(135deg,var(--blue),var(--blue2));
+  box-shadow:0 4px 15px rgba(59,124,255,.25);
+  transition:transform .1s,box-shadow .1s,opacity .1s;letter-spacing:.5px;
+}
+.btn:active{transform:scale(.96);box-shadow:0 2px 8px rgba(59,124,255,.15)}
+.btn-sm{padding:10px 16px;font-size:13px;border-radius:var(--radius-xs)}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text);box-shadow:none}
+.btn-outline:active{background:var(--card);box-shadow:none}
+.btn-gold{background:linear-gradient(135deg,#F0B90B,#D4A30A);box-shadow:0 4px 15px rgba(240,185,11,.3)}
+.btn-gold:active{box-shadow:0 2px 8px rgba(240,185,11,.15)}
+.btn-red{background:linear-gradient(135deg,#FF3D57,#D63045);box-shadow:0 4px 15px rgba(255,61,87,.25)}
+.btn-green{background:linear-gradient(135deg,#00C853,#00A844);box-shadow:0 4px 15px rgba(0,200,83,.25)}
+.btn:disabled{opacity:.4;pointer-events:none}
+
+.input{
+  width:100%;padding:14px 16px;background:var(--card);border:1.5px solid var(--border);
+  border-radius:var(--radius-sm);font-family:var(--font);font-size:15px;color:var(--text);
+  outline:none;text-align:center;letter-spacing:4px;transition:border-color .2s;
+}
+.input:focus{border-color:var(--blue)}
+.input::placeholder{color:var(--text3);letter-spacing:0}
+.input-label{display:block;font-size:13px;color:var(--text2);margin-bottom:6px;font-weight:500}
+
+.card{
+  background:var(--card);border-radius:var(--radius);padding:20px;
+  border:1px solid var(--border);
+}
+
+/* Badge */
+.badge{
+  display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;
+}
+.badge-gold{background:rgba(240,185,11,.15);color:var(--gold)}
+.badge-green{background:rgba(0,200,83,.15);color:var(--green)}
+.badge-red{background:rgba(255,61,87,.15);color:var(--red)}
+
+/* ===== AUTH SCREENS ===== */
+.auth-wrap{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:32px 24px;gap:20px;
+}
+.auth-logo{font-size:48px;margin-bottom:4px}
+.auth-title{font-size:26px;font-weight:700;color:var(--text);letter-spacing:1px}
+.auth-sub{font-size:14px;color:var(--text2);margin-bottom:8px}
+.auth-form{width:100%;display:flex;flex-direction:column;gap:14px}
+.auth-switch{font-size:13px;color:var(--blue);cursor:pointer;margin-top:4px}
+.auth-switch:active{opacity:.7}
+.error-text{font-size:12px;color:var(--red);min-height:18px;text-align:center}
+
+/* ===== LOBBY ===== */
+.lobby-wrap{padding:20px 20px 32px;display:flex;flex-direction:column;gap:20px}
+.lobby-top{display:flex;justify-content:space-between;align-items:center}
+.lobby-account{font-size:13px;color:var(--text2)}
+.lobby-account span{color:var(--text);font-weight:600}
+.lobby-settings{width:36px;height:36px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:transform .15s}
+.lobby-settings:active{transform:rotate(60deg)}
+
+.gold-hero{
+  text-align:center;padding:28px 20px;background:linear-gradient(145deg,#1A1F2E,#161A23);
+  border-radius:var(--radius);border:1px solid var(--border);
+}
+.gold-hero-label{font-size:13px;color:var(--text2);margin-bottom:8px}
+.gold-hero-num{font-size:44px;font-weight:800;color:var(--gold);letter-spacing:2px;line-height:1.1}
+.gold-hero-cny{font-size:13px;color:var(--text3);margin-top:4px}
+.gold-hero-cny span{color:var(--text2)}
+
+.lobby-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.lobby-btn{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;padding:20px 12px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);cursor:pointer;transition:transform .1s,border-color .2s;
+}
+.lobby-btn:active{transform:scale(.96)}
+.lobby-btn-icon{font-size:28px}
+.lobby-btn-text{font-size:13px;font-weight:600;color:var(--text)}
+.lobby-btn-sub{font-size:11px;color:var(--text3)}
+
+.btn-start{
+  width:100%;padding:18px;font-size:17px;font-weight:700;
+  background:linear-gradient(135deg,var(--blue),#5B4DFF);
+  box-shadow:0 6px 25px rgba(59,124,255,.35);
+}
+
+/* ===== GAME ===== */
+#screen-game{padding:0;background:#000}
+.game-hud{
+  display:flex;justify-content:space-around;align-items:center;
+  padding:10px 12px;background:rgba(22,26,35,.95);
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.game-hud-item{text-align:center}
+.game-hud-label{font-size:10px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:1px}
+.game-hud-val{font-size:18px;font-weight:700;color:var(--text)}
+.game-hud-val.gold{color:var(--gold)}
+.game-hud-val.target{color:var(--gold);font-size:22px}
+.game-canvas-wrap{flex:1;position:relative;overflow:hidden;background:#0D1117}
+#gameCanvas{display:block;width:100%;height:100%}
+.game-tap-hint{
+  position:absolute;bottom:18%;left:50%;transform:translateX(-50%);
+  font-size:14px;font-weight:500;color:rgba(255,255,255,.5);
+  pointer-events:none;animation:hintPulse 2.2s ease-in-out infinite;
+  background:rgba(22,26,35,.8);padding:8px 20px;border-radius:20px;
+  border:1px solid rgba(255,255,255,.08);
+}
+@keyframes hintPulse{0%,100%{opacity:.35;transform:translateX(-50%) translateY(0)}50%{opacity:.85;transform:translateX(-50%) translateY(-6px)}}
+.game-bottom{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 16px;background:rgba(22,26,35,.95);
+  border-top:1px solid var(--border);flex-shrink:0;font-size:13px;
+}
+
+/* ===== PROFILE ===== */
+.profile-wrap{padding:16px 16px 24px;display:flex;flex-direction:column;gap:16px}
+.profile-header{display:flex;align-items:center;gap:12px}
+.profile-back{width:36px;height:36px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;flex-shrink:0}
+.profile-title{font-size:20px;font-weight:700}
+
+.tab-scroll{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tab-scroll::-webkit-scrollbar{display:none}
+.tab-btn{
+  flex-shrink:0;padding:8px 14px;border-radius:20px;font-family:var(--font);font-size:12px;
+  font-weight:500;cursor:pointer;border:1px solid var(--border);background:transparent;
+  color:var(--text2);transition:all .2s;white-space:nowrap;
+}
+.tab-btn.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.tab-content{display:none;flex-direction:column;gap:16px}
+.tab-content.active{display:flex}
+
+/* ===== RECHARGE ===== */
+.recharge-methods{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.recharge-method{
+  padding:20px 12px;background:var(--card);border:2px solid var(--border);
+  border-radius:var(--radius);text-align:center;cursor:pointer;transition:all .2s;
+}
+.recharge-method.active{border-color:var(--blue);background:rgba(59,124,255,.08)}
+.recharge-method-icon{font-size:32px;margin-bottom:6px}
+.recharge-method-name{font-size:14px;font-weight:600}
+.recharge-tiers{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.recharge-tier{
+  padding:16px 12px;background:var(--card);border:1.5px solid var(--border);
+  border-radius:var(--radius-sm);text-align:center;cursor:pointer;transition:all .2s;
+}
+.recharge-tier.active{border-color:var(--blue);background:rgba(59,124,255,.08)}
+.recharge-tier-price{font-size:18px;font-weight:700;color:var(--text)}
+.recharge-tier-gold{font-size:13px;color:var(--gold);margin-top:2px}
+.recharge-tier-badge{font-size:10px;color:var(--green);margin-top:2px}
+
+.qr-display{
+  width:180px;height:180px;margin:0 auto;border-radius:var(--radius-sm);
+  background:var(--card2);border:2px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;position:relative;
+}
+.qr-display img{width:100%;height:100%;object-fit:contain}
+.qr-placeholder{text-align:center;color:var(--text3);font-size:13px;line-height:1.6}
+.qr-placeholder-icon{font-size:40px;margin-bottom:8px}
+
+/* ===== WITHDRAW ===== */
+.withdraw-methods{display:flex;gap:8px}
+.withdraw-method-chip{
+  flex:1;padding:10px;text-align:center;border-radius:var(--radius-xs);
+  border:1.5px solid var(--border);cursor:pointer;font-size:12px;font-weight:500;
+  transition:all .2s;color:var(--text2);
+}
+.withdraw-method-chip.active{border-color:var(--blue);color:var(--blue);background:rgba(59,124,255,.06)}
+.withdraw-record{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px;background:var(--card);border-radius:var(--radius-sm);
+  border:1px solid var(--border);font-size:12px;
+}
+
+/* ===== CHAT (Customer Service) ===== */
+.chat-messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;min-height:300px;max-height:400px}
+.chat-msg{max-width:85%;padding:12px 14px;border-radius:16px;font-size:13px;line-height:1.6;animation:msgIn .25s ease-out}
+.chat-msg.bot{align-self:flex-start;background:var(--card);border-bottom-left-radius:4px;color:var(--text)}
+.chat-msg.user{align-self:flex-end;background:var(--blue);border-bottom-right-radius:4px;color:#fff}
+.chat-quick{display:flex;flex-wrap:wrap;gap:6px}
+.chat-quick-chip{
+  padding:7px 14px;border-radius:16px;font-size:12px;border:1px solid var(--border);
+  background:var(--card);color:var(--text2);cursor:pointer;transition:all .15s;
+}
+.chat-quick-chip:active{background:var(--blue);border-color:var(--blue);color:#fff}
+.chat-input-row{display:flex;gap:8px}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== ADMIN SETTINGS ===== */
+.upload-zone{
+  padding:32px 20px;border:2px dashed var(--border);border-radius:var(--radius);
+  text-align:center;cursor:pointer;transition:border-color .2s;background:var(--card);
+}
+.upload-zone:hover,.upload-zone:active{border-color:var(--blue)}
+.upload-zone-icon{font-size:36px;margin-bottom:8px}
+.upload-zone-text{font-size:13px;color:var(--text2)}
+.upload-preview{width:100%;max-width:200px;margin:12px auto 0;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border)}
+.upload-preview img{width:100%;display:block}
+
+/* ===== MODALS ===== */
+.modal-overlay{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  background:rgba(0,0,0,.75);display:none;justify-content:center;align-items:center;
+  z-index:200;padding:24px;
+}
+.modal-overlay.active{display:flex}
+.modal-overlay.in{animation:fadeIn .2s ease-out}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-box{
+  background:var(--card2);border:1px solid var(--border);border-radius:20px;
+  padding:28px 22px;width:100%;max-width:340px;text-align:center;
+  animation:popIn .28s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+@keyframes popIn{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-title{font-size:20px;font-weight:700;margin-bottom:8px}
+.modal-sub{font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6}
+.modal-score{font-size:48px;font-weight:800;line-height:1.1}
+.modal-score.perfect{color:var(--gold)}
+.modal-score.good{color:var(--green)}
+.modal-score.ok{color:var(--orange)}
+.modal-score.fail{color:var(--red)}
+.modal-btns{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+.title-badge{
+  display:inline-block;padding:6px 16px;border-radius:20px;
+  background:linear-gradient(135deg,rgba(240,185,11,.2),rgba(240,185,11,.05));
+  color:var(--gold);font-size:14px;font-weight:700;margin:8px 0;
+}
+
+/* ===== TOAST ===== */
+.toast-wrap{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  pointer-events:none;z-index:300;display:flex;justify-content:center;align-items:flex-start;
+  padding-top:60px;
+}
+.toast{
+  background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:14px 24px;font-size:14px;font-weight:600;color:var(--text);
+  box-shadow:0 10px 40px rgba(0,0,0,.5);
+  transform:translateY(-20px);opacity:0;transition:all .3s cubic-bezier(.22,.61,.36,1);
+}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{color:var(--green)}
+.toast.error{color:var(--red)}
+
+/* ===== SCORE FLOAT (in-game) ===== */
+.score-float{
+  position:absolute;font-size:32px;font-weight:800;pointer-events:none;z-index:150;
+  animation:floatUp .9s ease-out forwards;
+}
+@keyframes floatUp{
+  0%{opacity:1;transform:translate(-50%,0) scale(1)}
+  50%{opacity:1;transform:translate(-50%,-30px) scale(1.3)}
+  100%{opacity:0;transform:translate(-50%,-80px) scale(.8)}
+}
+
+/* ===== COUNT-UP GOLD ANIMATION ===== */
+.num-roll{display:inline-block}
+.num-roll.rolling{animation:numPop .3s ease-out}
+@keyframes numPop{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:360px){
+  .gold-hero-num{font-size:36px}
+  .auth-title{font-size:22px}
+  .btn-start{font-size:15px;padding:14px}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+<!-- ===== TOAST ===== -->
+<div class="toast-wrap"><div class="toast" id="toast"></div></div>
+
+<!-- ====================================================================== -->
+<!--  LOGIN -->
+<!-- ====================================================================== -->
+<div id="screen-login" class="screen active">
+  <div class="auth-wrap">
+    <div class="auth-logo">🏢</div>
+    <div class="auth-title">电梯停靠</div>
+    <div class="auth-sub">精准停靠 · 赢取金币</div>
+    <div class="auth-form">
+      <div><label class="input-label">账号</label><input class="input" id="login-account" type="text" inputmode="numeric" maxlength="6" placeholder="6位数字账号"></div>
+      <div><label class="input-label">密码</label><input class="input" id="login-pin" type="password" inputmode="numeric" maxlength="6" placeholder="6位数字密码" onkeydown="if(event.key==='Enter')Account.login()"></div>
+      <div class="error-text" id="login-error"></div>
+      <button class="btn" onclick="Account.login()">登 录</button>
+    </div>
+    <span class="auth-switch" onclick="UI.showScreen('register')">没有账号？立即注册 →</span>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!--  REGISTER -->
+<!-- ====================================================================== -->
+<div id="screen-register" class="screen">
+  <div class="auth-wrap">
+    <div class="auth-logo">📝</div>
+    <div class="auth-title">注册账号</div>
+    <div class="auth-sub">设置6位数字账号和密码</div>
+    <div class="auth-form">
+      <div><label class="input-label">设置账号</label><input class="input" id="reg-account" type="text" inputmode="numeric" maxlength="6" placeholder="6位数字账号"></div>
+      <div><label class="input-label">设置密码</label><input class="input" id="reg-pin" type="password" inputmode="numeric" maxlength="6" placeholder="6位数字密码"></div>
+      <div><label class="input-label">确认密码</label><input class="input" id="reg-pin2" type="password" inputmode="numeric" maxlength="6" placeholder="再次输入密码" onkeydown="if(event.key==='Enter')Account.register()"></div>
+      <div class="error-text" id="reg-error"></div>
+      <button class="btn" onclick="Account.register()">注 册</button>
+    </div>
+    <span class="auth-switch" onclick="UI.showScreen('login')">← 返回登录</span>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!--  LOBBY -->
+<!-- ====================================================================== -->
+<div id="screen-lobby" class="screen">
+  <div class="lobby-wrap">
+    <div class="lobby-top">
+      <div class="lobby-account">👤 账号 <span id="lobby-account">------</span></div>
+      <div class="lobby-settings" onclick="UI.showScreen('admin')" title="运营设置">⚙️</div>
+    </div>
+    <div class="gold-hero">
+      <div class="gold-hero-label">🪙 我的金币</div>
+      <div class="gold-hero-num" id="lobby-gold">0</div>
+      <div class="gold-hero-cny">≈ ¥<span id="lobby-cny">0.00</span></div>
+    </div>
+    <button class="btn btn-start" onclick="Game.start()">🎯 开始游戏 &nbsp;<small style="font-weight:400;opacity:.7">-10🪙</small></button>
+    <div class="lobby-grid">
+      <div class="lobby-btn" onclick="UI.showProfile('wallet')"><div class="lobby-btn-icon">💰</div><div class="lobby-btn-text">充值</div></div>
+      <div class="lobby-btn" onclick="UI.showProfile('withdraw')"><div class="lobby-btn-icon">💸</div><div class="lobby-btn-text">提现</div></div>
+      <div class="lobby-btn" onclick="UI.showProfile('stats')"><div class="lobby-btn-icon">📊</div><div class="lobby-btn-text">战绩</div></div>
+      <div class="lobby-btn" onclick="UI.showProfile('rules')"><div class="lobby-btn-icon">📖</div><div class="lobby-btn-text">规则</div></div>
+      <div class="lobby-btn" onclick="UI.showProfile('chat')"><div class="lobby-btn-icon">🤖</div><div class="lobby-btn-text">客服</div></div>
+      <div class="lobby-btn" onclick="Account.logout()"><div class="lobby-btn-icon">🚪</div><div class="lobby-btn-text">退出</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!--  GAME -->
+<!-- ====================================================================== -->
+<div id="screen-game" class="screen">
+  <div class="game-hud">
+    <div class="game-hud-item"><div class="game-hud-label">目标楼层</div><div class="game-hud-val target" id="hud-target">--F</div></div>
+    <div class="game-hud-item"><div class="game-hud-label">当前楼层</div><div class="game-hud-val" id="hud-current">1.0F</div></div>
+    <div class="game-hud-item"><div class="game-hud-label">💰 金币</div><div class="game-hud-val gold" id="hud-gold">0</div></div>
+    <div class="game-hud-item"><div class="game-hud-label">🔥 连击</div><div class="game-hud-val" id="hud-combo" style="color:var(--orange)">x0</div></div>
+  </div>
+  <div class="game-canvas-wrap" id="canvas-wrap">
+    <canvas id="gameCanvas"></canvas>
+    <div class="game-tap-hint" id="game-hint">👆 点击屏幕停下电梯</div>
+  </div>
+  <div class="game-bottom">
+    <span style="color:var(--text2)">每局消耗 10 🪙</span>
+    <span style="color:var(--blue);cursor:pointer" onclick="UI.showScreen('lobby')">退出 →</span>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!--  PROFILE (Tabs) -->
+<!-- ====================================================================== -->
+<div id="screen-profile" class="screen">
+  <div class="profile-wrap">
+    <div class="profile-header">
+      <div class="profile-back" onclick="UI.showScreen('lobby')">←</div>
+      <div class="profile-title">个人中心</div>
+    </div>
+    <div class="tab-scroll" id="tab-bar">
+      <button class="tab-btn active" data-tab="wallet">💰 充值</button>
+      <button class="tab-btn" data-tab="withdraw">💸 提现</button>
+      <button class="tab-btn" data-tab="stats">📊 战绩</button>
+      <button class="tab-btn" data-tab="password">🔑 改密</button>
+      <button class="tab-btn" data-tab="rules">📖 规则</button>
+      <button class="tab-btn" data-tab="chat">🤖 客服</button>
+    </div>
+
+    <!-- Wallet Tab -->
+    <div class="tab-content active" id="tab-wallet">
+      <div class="gold-hero">
+        <div class="gold-hero-label">🪙 当前余额</div>
+        <div class="gold-hero-num" id="profile-gold">0</div>
+        <div class="gold-hero-cny">≈ ¥<span id="profile-cny">0.00</span></div>
+      </div>
+      <div style="font-size:14px;font-weight:600">选择支付方式</div>
+      <div class="recharge-methods" id="recharge-methods">
+        <div class="recharge-method active" data-method="wechat" onclick="Recharge.selectMethod('wechat')">
+          <div class="recharge-method-icon">💚</div><div class="recharge-method-name">微信支付</div>
+        </div>
+        <div class="recharge-method" data-method="alipay" onclick="Recharge.selectMethod('alipay')">
+          <div class="recharge-method-icon">💙</div><div class="recharge-method-name">支付宝</div>
+        </div>
+      </div>
+      <div style="font-size:14px;font-weight:600">选择充值金额</div>
+      <div class="recharge-tiers" id="recharge-tiers">
+        <div class="recharge-tier" data-amount="20" onclick="Recharge.selectTier(20)"><div class="recharge-tier-price">¥20</div><div class="recharge-tier-gold">+20 🪙</div></div>
+        <div class="recharge-tier" data-amount="50" onclick="Recharge.selectTier(50)"><div class="recharge-tier-price">¥50</div><div class="recharge-tier-gold">+50 🪙</div></div>
+        <div class="recharge-tier" data-amount="100" onclick="Recharge.selectTier(100)"><div class="recharge-tier-price">¥100</div><div class="recharge-tier-gold">+150 🪙</div><div class="recharge-tier-badge">⭐ +50%赠送</div></div>
+        <div class="recharge-tier" data-amount="200" onclick="Recharge.selectTier(200)"><div class="recharge-tier-price">¥200</div><div class="recharge-tier-gold">+300 🪙</div><div class="recharge-tier-badge">💎 +50%赠送</div></div>
+      </div>
+      <button class="btn" id="btn-recharge" disabled onclick="Recharge.showQR()">请选择金额和支付方式</button>
+    </div>
+
+    <!-- Withdraw Tab -->
+    <div class="tab-content" id="tab-withdraw">
+      <div class="card" style="text-align:center">
+        <div style="font-size:13px;color:var(--text2)">可提余额</div>
+        <div style="font-size:36px;font-weight:800;color:var(--gold)" id="withdraw-balance">0</div>
+        <div style="font-size:12px;color:var(--text3)">最低提现 100 🪙 · 1🪙=¥1 · 无手续费</div>
+      </div>
+      <div><label class="input-label">提现金额</label><input class="input" id="withdraw-amount" type="number" inputmode="numeric" placeholder="最低100🪙" style="text-align:center;letter-spacing:0"></div>
+      <div style="font-size:13px;font-weight:500;color:var(--text2)">到账方式</div>
+      <div class="withdraw-methods">
+        <div class="withdraw-method-chip active" data-wm="wechat" onclick="Withdraw.selectMethod('wechat')">💚 微信</div>
+        <div class="withdraw-method-chip" data-wm="alipay" onclick="Withdraw.selectMethod('alipay')">💙 支付宝</div>
+        <div class="withdraw-method-chip" data-wm="bank" onclick="Withdraw.selectMethod('bank')">🏦 银行卡</div>
+      </div>
+      <div id="withdraw-fields"></div>
+      <button class="btn btn-gold" onclick="Withdraw.submit()">确认提现</button>
+      <div id="withdraw-records"></div>
+    </div>
+
+    <!-- Stats Tab -->
+    <div class="tab-content" id="tab-stats"><div id="stats-inner"></div></div>
+
+    <!-- Password Tab -->
+    <div class="tab-content" id="tab-password">
+      <div><label class="input-label">旧密码</label><input class="input" id="pw-old" type="password" inputmode="numeric" maxlength="6" placeholder="输入旧密码"></div>
+      <div><label class="input-label">新密码</label><input class="input" id="pw-new" type="password" inputmode="numeric" maxlength="6" placeholder="设置新密码"></div>
+      <div><label class="input-label">确认新密码</label><input class="input" id="pw-new2" type="password" inputmode="numeric" maxlength="6" placeholder="再次输入" onkeydown="if(event.key==='Enter')Account.changePassword()"></div>
+      <div class="error-text" id="pw-error"></div>
+      <button class="btn" onclick="Account.changePassword()">修改密码</button>
+    </div>
+
+    <!-- Rules Tab -->
+    <div class="tab-content" id="tab-rules">
+      <div class="card" style="line-height:2;font-size:13px">
+        <h3 style="color:var(--gold);margin-bottom:10px">🎯 游戏规则</h3>
+        <p>电梯从<span style="color:var(--gold)">1楼</span>匀速上升，在目标楼层点击屏幕停下。</p>
+        <p>每层包含<span style="color:var(--blue)">5格</span>精度单位，停得越准分越高。</p>
+        <br>
+        <h3 style="color:var(--gold);margin-bottom:10px">⭐ 得分</h3>
+        <p>🎯 完美对齐：<span style="color:var(--gold);font-weight:700">+50金币</span></p>
+        <p>📍 差1格：<span style="color:var(--green);font-weight:700">+20金币</span></p>
+        <p>📍 差2格：<span style="color:var(--orange);font-weight:700">+5金币</span></p>
+        <p>💥 差3格+：<span style="color:var(--red)">失败</span></p>
+        <br>
+        <h3 style="color:var(--gold);margin-bottom:10px">🔥 连击</h3>
+        <p>3连完美 → <span style="color:var(--gold)">电梯大师</span> +30</p>
+        <p>6连完美 → <span style="color:var(--orange)">电梯之神</span> +60</p>
+        <p>9连完美 → <span style="color:var(--red)">电梯传说</span> +90</p>
+        <br>
+        <h3 style="color:var(--gold);margin-bottom:10px">💰 费用</h3>
+        <p>每局消耗 <span style="color:var(--red)">10金币</span> · 1元=1金币</p>
+        <p>充值100元以上<span style="color:var(--green)">赠50%</span></p>
+        <p>提现满<span style="color:var(--blue)">100金币</span> · 无手续费</p>
+      </div>
+    </div>
+
+    <!-- Chat Tab (Customer Service) -->
+    <div class="tab-content" id="tab-chat">
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-quick" id="chat-quick"></div>
+      <div class="chat-input-row">
+        <input class="input" id="chat-input" type="text" placeholder="输入消息..." style="text-align:left;letter-spacing:0;flex:1" onkeydown="if(event.key==='Enter')CS.send()">
+        <button class="btn btn-sm" style="width:auto;flex-shrink:0" onclick="CS.send()">📤</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!--  ADMIN SETTINGS -->
+<!-- ====================================================================== -->
+<div id="screen-admin" class="screen">
+  <div class="profile-wrap">
+    <div class="profile-header">
+      <div class="profile-back" onclick="UI.showScreen('lobby')">←</div>
+      <div class="profile-title">⚙️ 运营设置</div>
+    </div>
+    <div class="card">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">💚 微信收款码</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">上传微信收款二维码，玩家充值时可看到</div>
+      <div class="upload-zone" onclick="document.getElementById('upload-wechat').click()">
+        <div class="upload-zone-icon" id="wechat-upload-icon">📷</div>
+        <div class="upload-zone-text" id="wechat-upload-text">点击上传微信收款码</div>
+        <div class="upload-preview" id="wechat-preview" style="display:none"><img id="wechat-preview-img" src=""></div>
+      </div>
+      <input type="file" id="upload-wechat" accept="image/*" style="display:none" onchange="Admin.uploadQR('wechat',this)">
+      <button class="btn btn-sm btn-outline" style="margin-top:12px;width:100%" id="btn-clear-wechat" onclick="Admin.clearQR('wechat')" disabled>清除已上传的收款码</button>
+    </div>
+    <div class="card">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">💙 支付宝收款码</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">上传支付宝收款二维码，玩家充值时可看到</div>
+      <div class="upload-zone" onclick="document.getElementById('upload-alipay').click()">
+        <div class="upload-zone-icon" id="alipay-upload-icon">📷</div>
+        <div class="upload-zone-text" id="alipay-upload-text">点击上传支付宝收款码</div>
+        <div class="upload-preview" id="alipay-preview" style="display:none"><img id="alipay-preview-img" src=""></div>
+      </div>
+      <input type="file" id="upload-alipay" accept="image/*" style="display:none" onchange="Admin.uploadQR('alipay',this)">
+      <button class="btn btn-sm btn-outline" style="margin-top:12px;width:100%" id="btn-clear-alipay" onclick="Admin.clearQR('alipay')" disabled>清除已上传的收款码</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!--  RECHARGE QR MODAL -->
+<!-- ====================================================================== -->
+<div class="modal-overlay" id="modal-qr">
+  <div class="modal-box">
+    <div class="modal-title" id="qr-title">💚 微信扫码支付</div>
+    <div style="font-size:28px;font-weight:700;margin:4px 0">¥<span id="qr-amount">0</span></div>
+    <div style="font-size:13px;color:var(--gold)">到账 <span id="qr-gold">0</span> 🪙</div>
+    <div class="qr-display" id="qr-display">
+      <div class="qr-placeholder" id="qr-placeholder">
+        <div class="qr-placeholder-icon">📷</div>
+        <div>收款码<br>未上传</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-top:8px">请使用对应App扫码支付</div>
+    <div class="modal-btns">
+      <button class="btn btn-green" id="btn-paid" onclick="Recharge.confirm()">✅ 已完成付款</button>
+      <button class="btn btn-sm btn-outline" onclick="UI.hideModal('modal-qr')">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!--  RESULT MODAL -->
+<!-- ====================================================================== -->
+<div class="modal-overlay" id="modal-result">
+  <div class="modal-box" id="result-box"></div>
+</div>
+
+<!-- ====================================================================== -->
+<!--  INSUFFICIENT MODAL -->
+<!-- ====================================================================== -->
+<div class="modal-overlay" id="modal-insufficient">
+  <div class="modal-box">
+    <div class="modal-title">💰 金币不足</div>
+    <div class="modal-sub">每局消耗 10 金币<br>当前余额不足，快去充值吧！</div>
+    <div class="modal-btns">
+      <button class="btn btn-gold" onclick="UI.hideModal('modal-insufficient');UI.showProfile('wallet')">去充值</button>
+      <button class="btn btn-sm btn-outline" onclick="UI.hideModal('modal-insufficient');UI.showScreen('lobby')">返回大厅</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /#app -->
+
+<script>
+// ============================================================================
+//  STORAGE
+// ============================================================================
+const STORAGE_KEY = 'elevator_app_v2';
+
+const Storage = {
+  load() { try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||{}}catch{return{}} },
+  save(d){ localStorage.setItem(STORAGE_KEY,JSON.stringify(d)); },
+  getAccounts(){ return this.load().accounts||{}; },
+  getAccount(id){ return this.getAccounts()[id]||null; },
+  saveAccount(id,acc){
+    const d=this.load();if(!d.accounts)d.accounts={};d.accounts[id]=acc;this.save(d);
+  },
+  getMeta(){ return this.load().meta||{}; },
+  saveMeta(m){ const d=this.load();d.meta=m;this.save(d); },
+  setLast(id){ const d=this.load();d.lastAccount=id;this.save(d); },
+  getLast(){ return this.load().lastAccount||null; }
+};
+
+// ============================================================================
+//  APP STATE
+// ============================================================================
+const App = { currentAccount:null, currentScreen:'login' };
+
+// ============================================================================
+//  UI
+// ============================================================================
+const UI = {
+  _history:[],
+
+  showScreen(name,dir){
+    const old=document.querySelector('.screen.active');
+    const nw=document.getElementById('screen-'+name);
+    if(!nw||old===nw)return;
+
+    // Cleanup game
+    if(App.currentScreen==='game'&&name!=='game') Game.cleanup();
+    App.currentScreen=name;
+
+    // Animate
+    if(old&&dir!=='back'){
+      old.classList.add('slide-out');
+      old.addEventListener('animationend',function h(){
+        old.removeEventListener('animationend',h);
+        old.classList.remove('active','slide-out');
+        old.style.transform='';old.style.opacity='';
+      },{once:true});
+    }else if(old){
+      old.classList.remove('active');
+    }
+
+    nw.style.transform=dir==='back'?'translateX(-20px)':'translateX(30px)';
+    nw.style.opacity='0';
+    nw.classList.add('active','slide-in');
+    nw.addEventListener('animationend',function h(){
+      nw.removeEventListener('animationend',h);
+      nw.classList.remove('slide-in');
+      nw.style.transform='';nw.style.opacity='';
+    },{once:true});
+
+    // Hide modals
+    document.querySelectorAll('.modal-overlay').forEach(m=>m.classList.remove('active','in'));
+
+    // Update content
+    if(name==='lobby') this.updateLobby();
+    if(name==='profile') this.renderStats();
+    if(name==='login'){
+      const last=Storage.getLast();
+      if(last) document.getElementById('login-account').value=last;
+    }
+    if(name==='game'){
+      // Will be set up by Game.start()
+    }
+    if(name==='admin') Admin.refresh();
+  },
+
+  showProfile(tab){
+    this.showScreen('profile');
+    setTimeout(()=>this.switchTab(tab),50);
+  },
+
+  switchTab(tabName){
+    document.querySelectorAll('#tab-bar .tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tabName));
+    document.querySelectorAll('#screen-profile .tab-content').forEach(c=>c.classList.remove('active'));
+    const tc=document.getElementById('tab-'+tabName);
+    if(tc) tc.classList.add('active');
+    if(tabName==='wallet') this.updateProfileGold();
+    if(tabName==='stats') this.renderStats();
+    if(tabName==='withdraw') Withdraw.refresh();
+    if(tabName==='chat') CS.init();
+  },
+
+  showModal(id){
+    const m=document.getElementById(id);
+    m.classList.add('active','in');
+  },
+  hideModal(id){
+    document.getElementById(id).classList.remove('active','in');
+  },
+
+  updateLobby(){
+    const acc=Account.getData();
+    const g=acc?acc.gold:0;
+    document.getElementById('lobby-gold').textContent=g;
+    document.getElementById('lobby-cny').textContent=(g*1).toFixed(2);
+    document.getElementById('lobby-account').textContent=App.currentAccount||'------';
+  },
+
+  updateProfileGold(){
+    const acc=Account.getData();
+    const g=acc?acc.gold:0;
+    document.getElementById('profile-gold').textContent=g;
+    document.getElementById('profile-cny').textContent=(g*1).toFixed(2);
+  },
+
+  renderStats(){
+    const acc=Account.getData();
+    if(!acc){document.getElementById('stats-inner').innerHTML='<div class="card" style="text-align:center;color:var(--text2)">暂无数据</div>';return;}
+    const s=acc.stats;
+    const tot=s.totalGames||0;
+    const pr=tot>0?Math.round((s.perfects||0)/tot*100):0;
+    const net=(s.totalEarned||0)-(s.totalSpent||0);
+    document.getElementById('stats-inner').innerHTML=`
+      <div class="card">
+        ${[
+          ['总局数',tot],['完美次数',s.perfects||0],['完美率',pr+'%'],
+          ['最高连击',(s.bestCombo||0)+'x'],['累计获得','+'+((s.totalEarned||0))+'🪙'],
+          ['累计消耗','-'+((s.totalSpent||0))+'🪙'],
+          ['净盈亏',(net>=0?'+':'')+net+'🪙'],
+          ['已获称号',(s.titles&&s.titles.length?s.titles.join(' · '):'暂无')],
+          ['当前连击',(acc.currentCombo||0)+'x']
+        ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--text2)">${l}</span><span style="font-weight:600">${v}</span></div>`).join('')
+        }
+      </div>`;
+  },
+
+  showToast(msg,type=''){
+    const t=document.getElementById('toast');
+    t.textContent=msg;t.className='toast '+type+' show';
+    clearTimeout(t._tid);
+    t._tid=setTimeout(()=>{t.classList.remove('show')},2000);
+  },
+
+  animateGold(el,from,to,duration){
+    const start=performance.now();
+    const step=(ts)=>{
+      const p=Math.min((ts-start)/duration,1);
+      const ease=1-Math.pow(1-p,3);
+      el.textContent=Math.round(from+(to-from)*ease);
+      if(p<1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  },
+
+  floatScore(x,y,text,color){
+    const el=document.createElement('div');
+    el.className='score-float';el.textContent=text;
+    el.style.left=x+'px';el.style.top=y+'px';el.style.color=color;
+    document.getElementById('canvas-wrap').appendChild(el);
+    setTimeout(()=>el.remove(),900);
+  }
+};
+
+// ============================================================================
+//  ACCOUNT
+// ============================================================================
+const Account = {
+  isValid(s){ return /^\d{6}$/.test(s); },
+
+  register(){
+    const id=document.getElementById('reg-account').value.trim();
+    const pin=document.getElementById('reg-pin').value.trim();
+    const pin2=document.getElementById('reg-pin2').value.trim();
+    const err=document.getElementById('reg-error');
+    if(!this.isValid(id)){err.textContent='账号必须是6位数字';return}
+    if(!this.isValid(pin)){err.textContent='密码必须是6位数字';return}
+    if(pin!==pin2){err.textContent='两次密码不一致';return}
+    if(Storage.getAccount(id)){err.textContent='该账号已存在';return}
+    const acc={pin,gold:10,stats:{totalGames:0,perfects:0,bestCombo:0,titles:[],totalEarned:0,totalSpent:0},currentCombo:0,withdrawals:[],totalWithdrawn:0,createdAt:Date.now()};
+    Storage.saveAccount(id,acc);Storage.setLast(id);
+    ['reg-account','reg-pin','reg-pin2'].forEach(n=>document.getElementById(n).value='');
+    err.textContent='';App.currentAccount=id;
+    UI.showToast('🎉 注册成功！赠送10金币','success');
+    UI.showScreen('lobby');
+  },
+
+  login(){
+    const id=document.getElementById('login-account').value.trim();
+    const pin=document.getElementById('login-pin').value.trim();
+    const err=document.getElementById('login-error');
+    if(!this.isValid(id)){err.textContent='账号必须是6位数字';return}
+    if(!this.isValid(pin)){err.textContent='密码必须是6位数字';return}
+    const acc=Storage.getAccount(id);
+    if(!acc){err.textContent='账号不存在';return}
+    if(acc.pin!==pin){err.textContent='密码错误';return}
+    ['login-account','login-pin'].forEach(n=>document.getElementById(n).value='');
+    err.textContent='';App.currentAccount=id;Storage.setLast(id);
+    UI.showToast('👋 欢迎回来！','success');
+    UI.showScreen('lobby');
+  },
+
+  logout(){
+    App.currentAccount=null;Storage.setLast(null);
+    UI.showToast('已退出登录');
+    UI.showScreen('login');
+  },
+
+  getData(){ return App.currentAccount?Storage.getAccount(App.currentAccount):null; },
+  saveData(d){ if(App.currentAccount) Storage.saveAccount(App.currentAccount,d); },
+
+  addGold(amt){
+    const acc=this.getData();if(!acc)return;
+    acc.gold=(acc.gold||0)+amt;this.saveData(acc);
+  },
+
+  changePassword(){
+    const old=document.getElementById('pw-old').value.trim();
+    const nw=document.getElementById('pw-new').value.trim();
+    const nw2=document.getElementById('pw-new2').value.trim();
+    const err=document.getElementById('pw-error');
+    const acc=this.getData();if(!acc)return;
+    if(acc.pin!==old){err.textContent='旧密码错误';return}
+    if(!this.isValid(nw)){err.textContent='新密码必须是6位数字';return}
+    if(nw!==nw2){err.textContent='两次密码不一致';return}
+    acc.pin=nw;this.saveData(acc);
+    ['pw-old','pw-new','pw-new2'].forEach(n=>document.getElementById(n).value='');
+    err.textContent='';
+    UI.showToast('✅ 密码修改成功','success');
+  }
+};
+
+// ============================================================================
+//  ADMIN (QR Upload)
+// ============================================================================
+const Admin = {
+  uploadQR(method,input){
+    const file=input.files[0];
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=function(e){
+      const base64=e.target.result;
+      // Compress if too large (>500KB)
+      if(base64.length>500000){
+        const img=new Image();
+        img.onload=function(){
+          const c=document.createElement('canvas');
+          const maxW=400;const scale=Math.min(1,maxW/img.width);
+          c.width=img.width*scale;c.height=img.height*scale;
+          const cx=c.getContext('2d');cx.drawImage(img,0,0,c.width,c.height);
+          const compressed=c.toDataURL('image/jpeg',.7);
+          Admin.saveQR(method,compressed);
+        };
+        img.src=base64;
+      }else{
+        Admin.saveQR(method,base64);
+      }
+    };
+    reader.readAsDataURL(file);
+  },
+
+  saveQR(method,base64){
+    const meta=Storage.getMeta();
+    if(!meta.qrCodes) meta.qrCodes={};
+    meta.qrCodes[method]=base64;
+    Storage.saveMeta(meta);
+    this.refresh();
+    UI.showToast('✅ 收款码已保存','success');
+  },
+
+  clearQR(method){
+    const meta=Storage.getMeta();
+    if(meta.qrCodes) delete meta.qrCodes[method];
+    Storage.saveMeta(meta);
+    this.refresh();
+    UI.showToast('已清除收款码');
+  },
+
+  getQR(method){
+    const meta=Storage.getMeta();
+    return (meta.qrCodes&&meta.qrCodes[method])||null;
+  },
+
+  refresh(){
+    ['wechat','alipay'].forEach(m=>{
+      const qr=this.getQR(m);
+      const preview=document.getElementById(m+'-preview');
+      const img=document.getElementById(m+'-preview-img');
+      const icon=document.getElementById(m+'-upload-icon');
+      const text=document.getElementById(m+'-upload-text');
+      const btnClear=document.getElementById('btn-clear-'+m);
+      if(qr){
+        preview.style.display='block';img.src=qr;
+        icon.textContent='✅';text.textContent='点击更换收款码';
+        btnClear.disabled=false;
+      }else{
+        preview.style.display='none';
+        icon.textContent='📷';text.textContent='点击上传'+(m==='wechat'?'微信':'支付宝')+'收款码';
+        btnClear.disabled=true;
+      }
+    });
+  }
+};
+
+// ============================================================================
+//  RECHARGE
+// ============================================================================
+const Recharge = {
+  method:'wechat',
+  amount:0,
+
+  selectMethod(m){
+    this.method=m;
+    document.querySelectorAll('#recharge-methods .recharge-method').forEach(el=>el.classList.toggle('active',el.dataset.method===m));
+    this.updateBtn();
+  },
+
+  selectTier(amt){
+    this.amount=amt;
+    document.querySelectorAll('#recharge-tiers .recharge-tier').forEach(el=>el.classList.toggle('active',parseInt(el.dataset.amount)===amt));
+    this.updateBtn();
+  },
+
+  updateBtn(){
+    const btn=document.getElementById('btn-recharge');
+    if(this.amount>0){
+      const gold=this.amount>=100?Math.floor(this.amount*1.5):this.amount;
+      btn.textContent='💳 充值 ¥'+this.amount+' → +'+gold+'🪙';
+      btn.disabled=false;
+    }else{
+      btn.textContent='请选择金额和支付方式';
+      btn.disabled=true;
+    }
+  },
+
+  showQR(){
+    if(!this.amount)return;
+    const gold=this.amount>=100?Math.floor(this.amount*1.5):this.amount;
+    const mName=this.method==='wechat'?'微信':'支付宝';
+    const icon=this.method==='wechat'?'💚':'💙';
+
+    document.getElementById('qr-title').textContent=icon+' '+mName+'扫码支付';
+    document.getElementById('qr-amount').textContent=this.amount;
+    document.getElementById('qr-gold').textContent=gold;
+
+    const qrDisplay=document.getElementById('qr-display');
+    const placeholder=document.getElementById('qr-placeholder');
+    const qrImg=Admin.getQR(this.method);
+
+    // Clear previous
+    const existingImg=qrDisplay.querySelector('img');
+    if(existingImg) existingImg.remove();
+    placeholder.style.display='none';
+
+    if(qrImg){
+      const img=document.createElement('img');
+      img.src=qrImg;img.alt=mName+'收款码';
+      img.style.width='100%';img.style.height='100%';img.style.objectFit='contain';
+      qrDisplay.appendChild(img);
+    }else{
+      placeholder.style.display='';
+      placeholder.querySelector('.qr-placeholder-icon').textContent='📷';
+      placeholder.querySelector('div:last-child').textContent=mName+'收款码\n未上传';
+    }
+
+    UI.showModal('modal-qr');
+  },
+
+  confirm(){
+    const gold=this.amount>=100?Math.floor(this.amount*1.5):this.amount;
+    UI.hideModal('modal-qr');
+    Account.addGold(gold);
+    UI.showToast('✅ 充值成功！+'+gold+' 🪙','success');
+    UI.updateLobby();
+    UI.updateProfileGold();
+    UI.renderStats();
+  }
+};
+
+// ============================================================================
+//  WITHDRAW
+// ============================================================================
+const Withdraw = {
+  method:'wechat',
+
+  selectMethod(m){
+    this.method=m;
+    document.querySelectorAll('#tab-withdraw .withdraw-method-chip').forEach(el=>el.classList.toggle('active',el.dataset.wm===m));
+    this.renderFields();
+  },
+
+  renderFields(){
+    const c=document.getElementById('withdraw-fields');
+    if(this.method==='wechat'){
+      c.innerHTML='<div><label class="input-label">微信号</label><input class="input" id="wd-wechat-id" type="text" placeholder="请输入微信号" style="text-align:left;letter-spacing:0"></div>';
+    }else if(this.method==='alipay'){
+      c.innerHTML='<div><label class="input-label">支付宝账号</label><input class="input" id="wd-alipay-id" type="text" placeholder="请输入支付宝账号" style="text-align:left;letter-spacing:0"></div>';
+    }else{
+      c.innerHTML=`
+        <div><label class="input-label">持卡人姓名</label><input class="input" id="wd-bank-name" type="text" placeholder="请输入姓名" style="text-align:left;letter-spacing:0"></div>
+        <div><label class="input-label">银行卡号</label><input class="input" id="wd-bank-card" type="text" inputmode="numeric" placeholder="请输入银行卡号" style="text-align:left;letter-spacing:0"></div>
+        <div><label class="input-label">开户银行</label><input class="input" id="wd-bank-bank" type="text" placeholder="如：中国工商银行" style="text-align:left;letter-spacing:0"></div>`;
+    }
+  },
+
+  refresh(){
+    const acc=Account.getData();
+    document.getElementById('withdraw-balance').textContent=acc?acc.gold:0;
+    this.renderFields();
+    this.renderRecords();
+  },
+
+  renderRecords(){
+    const acc=Account.getData();
+    const recs=acc&&acc.withdrawals?[...acc.withdrawals].reverse():[];
+    const c=document.getElementById('withdraw-records');
+    if(recs.length===0){c.innerHTML='';return}
+    c.innerHTML='<div style="font-size:13px;font-weight:600;color:var(--text2);margin-top:8px">提现记录</div>'+recs.map(r=>{
+      const mName=r.method==='wechat'?'微信':r.method==='alipay'?'支付宝':'银行卡';
+      return `<div class="withdraw-record"><div><div style="font-weight:600">-${r.amount}🪙 → ${mName}</div><div style="color:var(--text3);font-size:11px">${new Date(r.timestamp).toLocaleDateString()}</div></div><span class="badge badge-green">✅ 已到账</span></div>`;
+    }).join('');
+  },
+
+  submit(){
+    const acc=Account.getData();if(!acc)return;
+    const amt=parseInt(document.getElementById('withdraw-amount').value);
+    if(!amt||amt<100){UI.showToast('提现金额最低100🪙','error');return}
+    if(amt>acc.gold){UI.showToast('余额不足','error');return}
+
+    let accountInfo='';let bankName='';let cardHolder='';
+    if(this.method==='wechat'){
+      accountInfo=document.getElementById('wd-wechat-id')?.value.trim()||'';
+      if(!accountInfo){UI.showToast('请输入微信号','error');return}
+    }else if(this.method==='alipay'){
+      accountInfo=document.getElementById('wd-alipay-id')?.value.trim()||'';
+      if(!accountInfo){UI.showToast('请输入支付宝账号','error');return}
+    }else{
+      cardHolder=document.getElementById('wd-bank-name')?.value.trim()||'';
+      accountInfo=document.getElementById('wd-bank-card')?.value.trim()||'';
+      bankName=document.getElementById('wd-bank-bank')?.value.trim()||'';
+      if(!cardHolder){UI.showToast('请输入持卡人姓名','error');return}
+      if(!accountInfo||accountInfo.length<10){UI.showToast('请输入正确的银行卡号','error');return}
+      if(!bankName){UI.showToast('请输入开户银行','error');return}
+    }
+
+    // Deduct and record
+    acc.gold-=amt;
+    acc.totalWithdrawn=(acc.totalWithdrawn||0)+amt;
+    if(!acc.withdrawals) acc.withdrawals=[];
+    acc.withdrawals.push({id:Date.now(),amount:amt,method:this.method,account:accountInfo,bankName,cardHolder,timestamp:Date.now(),status:'completed'});
+    this.saveData(acc);
+
+    document.getElementById('withdraw-amount').value='';
+    this.refresh();
+    UI.showToast('✅ 提现成功！-'+amt+'🪙\n将在24小时内到账','success');
+    UI.updateLobby();
+    UI.updateProfileGold();
+    UI.renderStats();
+  },
+
+  saveData(acc){ Account.saveData(acc); }
+};
+
+// ============================================================================
+//  CUSTOMER SERVICE (Chatbot)
+// ============================================================================
+const CS = {
+  FAQ:{
+    '1':'充值流程：①选择微信/支付宝 ②选择金额 ③扫码付款 ④点击"已完成付款"，金币即时到账！如有延迟请联系人工客服。',
+    '2':'提现流程：进入个人中心→提现，选择到账方式（微信/支付宝/银行卡），填写信息后提交。最低100金币，无手续费，24小时内到账。',
+    '3':'游戏规则：电梯从1楼上升，在目标楼层（3-18楼随机）点击屏幕停下。每层5格精度，完美对齐+50金币，差1格+20，差2格+5，差3格以上失败。',
+    '4':'账号采用6位数字+6位密码，数据安全存储在本设备。如忘记密码，可联系人工客服协助找回。',
+    '5':'金币说明：注册送10金币试玩，每局消耗10金币。1元=1金币（充值1:1，提现1:1）。充值100元以上赠送50%。',
+    '6':'连击系统：连续3次完美对齐→🏆电梯大师+30金币；6次完美→🏆电梯之神+60金币；9次完美→🏆电梯传说+90金币。中断后重新计数。',
+    '充值':'请回复 1 了解充值流程',
+    '提现':'请回复 2 了解提现流程',
+    '规则':'请回复 3 了解游戏规则',
+    '账号':'请回复 4 了解账号相关',
+    '金币':'请回复 5 了解金币说明',
+    '连击':'请回复 6 了解连击系统',
+    '客服':'如需人工客服，请添加微信：elevator_game_cs（工作日9:00-18:00）',
+    '人工':'如需人工客服，请添加微信：elevator_game_cs（工作日9:00-18:00）',
+    '你好':'你好！我是24小时智能客服🤖\n回复数字了解：\n1️⃣ 充值问题\n2️⃣ 提现问题\n3️⃣ 游戏规则\n4️⃣ 账号问题\n5️⃣ 金币说明\n6️⃣ 连击系统\n\n也可以直接输入关键词，我会尽力帮你～',
+    '在吗':'在的！24小时在线为你服务～回复数字：\n1️⃣充值 2️⃣提现 3️⃣规则 4️⃣账号 5️⃣金币 6️⃣连击',
+    'default':'收到你的消息了～如果我没有理解对，请回复数字：\n1️⃣充值 2️⃣提现 3️⃣规则 4️⃣账号 5️⃣金币 6️⃣连击\n\n或输入"人工"获取人工客服联系方式。'
+  },
+
+  init(){
+    const box=document.getElementById('chat-messages');
+    if(box.children.length===0){
+      this.addMsg('bot','你好！我是24小时智能客服🤖\n回复数字了解：\n1️⃣ 充值问题\n2️⃣ 提现问题\n3️⃣ 游戏规则\n4️⃣ 账号问题\n5️⃣ 金币说明\n6️⃣ 连击系统\n\n也可以直接输入关键词～');
+    }
+    this.renderQuick();
+  },
+
+  renderQuick(){
+    document.getElementById('chat-quick').innerHTML=[
+      ['1️⃣ 充值','1'],['2️⃣ 提现','2'],['3️⃣ 规则','3'],
+      ['4️⃣ 账号','4'],['5️⃣ 金币','5'],['6️⃣ 连击','6'],
+      ['👤 人工客服','人工']
+    ].map(([l,v])=>`<span class="chat-quick-chip" onclick="CS.quick('${v}')">${l}</span>`).join('');
+  },
+
+  quick(v){ this.addMsg('user',v);this.reply(v); },
+
+  send(){
+    const inp=document.getElementById('chat-input');
+    const msg=inp.value.trim();
+    if(!msg)return;
+    this.addMsg('user',msg);
+    inp.value='';
+    this.reply(msg);
+  },
+
+  reply(msg){
+    const lower=msg.toLowerCase().trim();
+    let reply=null;
+    // Exact match first
+    if(this.FAQ[lower]) reply=this.FAQ[lower];
+    else{
+      // Keyword match
+      for(const [k,v] of Object.entries(this.FAQ)){
+        if(k.length>2&&lower.includes(k)){reply=v;break}
+      }
+    }
+    if(!reply) reply=this.FAQ['default'];
+    setTimeout(()=>this.addMsg('bot',reply),400+Math.random()*400);
+  },
+
+  addMsg(type,text){
+    const box=document.getElementById('chat-messages');
+    const el=document.createElement('div');
+    el.className='chat-msg '+type;
+    el.textContent=text;
+    box.appendChild(el);
+    box.scrollTop=box.scrollHeight;
+  }
+};
+
+// ============================================================================
+//  GAME ENGINE
+// ============================================================================
+const Game = {
+  VISIBLE_FLOORS:10, MAX_FLOOR:18, TARGET_MIN:3, GRIDS_PER_FLOOR:5, COST:10,
+
+  state:'idle',targetFloor:0,targetSubGrid:0,targetGrid:0,
+  elevatorGrid:0,speed:0,animId:null,lastTime:0,
+  cameraGrid:0,stopped:false,combo:0,
+  canvas:null,ctx:null,canvasW:0,canvasH:0,floorH:0,gridH:0,
+  _font:'',
+
+  start(){
+    if(this.state==='rising'||this.state==='stopping')return;
+    const acc=Account.getData();if(!acc)return;
+    if(acc.gold<this.COST){UI.showModal('modal-insufficient');return}
+
+    acc.gold-=this.COST;
+    acc.stats.totalSpent=(acc.stats.totalSpent||0)+this.COST;
+    Account.saveData(acc);
+
+    this.targetFloor=this.randInt(Game.TARGET_MIN,Game.MAX_FLOOR);
+    this.targetSubGrid=this.randInt(0,Game.GRIDS_PER_FLOOR-1);
+    this.targetGrid=(this.targetFloor-1)*Game.GRIDS_PER_FLOOR+this.targetSubGrid;
+
+    const base=12;
+    this.speed=base*(1+(this.targetFloor-3)*0.06);
+
+    this.elevatorGrid=0;this.cameraGrid=-2;this.stopped=false;
+    this.state='rising';this.combo=(acc.currentCombo||0);
+
+    document.getElementById('hud-target').textContent=this.targetFloor+'F';
+    document.getElementById('hud-current').textContent='1.0F';
+    document.getElementById('hud-gold').textContent=acc.gold;
+    document.getElementById('hud-combo').textContent='x'+this.combo;
+    document.getElementById('game-hint').style.display='block';
+
+    UI.showScreen('game');
+    this.initCanvas();
+    this.lastTime=performance.now();
+    this.loop(this.lastTime);
+  },
+
+  initCanvas(){
+    this.canvas=document.getElementById('gameCanvas');
+    const wrap=this.canvas.parentElement;
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    this.canvasW=wrap.clientWidth;this.canvasH=wrap.clientHeight;
+    this.canvas.width=this.canvasW*dpr;this.canvas.height=this.canvasH*dpr;
+    this.canvas.style.width=this.canvasW+'px';this.canvas.style.height=this.canvasH+'px';
+    this.ctx=this.canvas.getContext('2d');
+    this.ctx.scale(dpr,dpr);
+    this.floorH=this.canvasH/this.VISIBLE_FLOORS;
+    this.gridH=this.floorH/this.GRIDS_PER_FLOOR;
+    this.canvas.onclick=null;
+    this._font=this._font;
+    const self=this;
+    this.canvas.onclick=function(e){
+      if(self.state==='rising'){const rect=self.canvas.getBoundingClientRect();self.stopElevator(e.clientX-rect.left,e.clientY-rect.top)}
+    };
+  },
+
+  stopElevator(cx,cy){
+    if(this.stopped)return;
+    this.stopped=true;this.state='stopping';
+
+    const stoppedGrid=Math.round(this.elevatorGrid);
+    const diff=Math.abs(stoppedGrid-this.targetGrid);
+    let reward=0,type='';
+    if(diff===0){reward=50;type='perfect'}
+    else if(diff===1){reward=20;type='good'}
+    else if(diff===2){reward=5;type='ok'}
+    else{reward=0;type='fail'}
+
+    if(type==='perfect') this.combo++; else this.combo=0;
+
+    let bonus=0,title=null;
+    if(this.combo>0&&this.combo%3===0&&type==='perfect'){
+      if(this.combo===3){title='电梯大师';bonus=30}
+      else if(this.combo===6){title='电梯之神';bonus=60}
+      else if(this.combo===9){title='电梯传说';bonus=90}
+      else{title='电梯至尊';bonus=this.combo*10}
+    }
+
+    const acc=Account.getData();
+    acc.gold+=reward+bonus;
+    acc.stats.totalGames=(acc.stats.totalGames||0)+1;
+    if(type==='perfect') acc.stats.perfects=(acc.stats.perfects||0)+1;
+    if(this.combo>acc.stats.bestCombo) acc.stats.bestCombo=this.combo;
+    acc.stats.totalEarned=(acc.stats.totalEarned||0)+reward+bonus;
+    acc.currentCombo=this.combo;
+    if(title&&!acc.stats.titles.includes(title)) acc.stats.titles.push(title);
+    Account.saveData(acc);
+
+    const stoppedFloor=stoppedGrid/this.GRIDS_PER_FLOOR+1;
+    document.getElementById('hud-current').textContent=stoppedFloor.toFixed(2)+'F';
+    document.getElementById('hud-gold').textContent=acc.gold;
+    document.getElementById('hud-combo').textContent='x'+this.combo;
+    document.getElementById('game-hint').style.display='none';
+
+    // Float score animation
+    const wrap=document.getElementById('canvas-wrap');
+    const scoreText=type==='perfect'?'🎯+50':'+'+reward;
+    const scoreColor=type==='perfect'?'#F0B90B':type==='good'?'#00C853':type==='ok'?'#FF9100':'#FF3D57';
+    // Find elevator screen position
+    const carScreenY=this.canvasH-(this.elevatorGrid-this.cameraGrid)*this.gridH;
+    UI.floatScore(this.canvasW/2,carScreenY-20,scoreText,scoreColor);
+
+    if(type==='perfect'&&navigator.vibrate) navigator.vibrate([20,40,20]);
+
+    setTimeout(()=>this.showResult(type,reward,bonus,title,stoppedFloor),350);
+  },
+
+  showResult(type,reward,bonus,title,stoppedFloor){
+    this.state='result';
+    let icon='',css='';
+    if(type==='perfect'){icon='🎯';css='perfect'}
+    else if(type==='good'){icon='👍';css='good'}
+    else if(type==='ok'){icon='👌';css='ok'}
+    else{icon='💥';css='fail'}
+
+    const box=document.getElementById('result-box');
+    box.innerHTML=`
+      <div style="font-size:48px;margin-bottom:4px">${icon}</div>
+      <div class="modal-score ${css}">+${reward}</div>
+      <div style="font-size:14px;color:var(--text2)">停在 ${stoppedFloor.toFixed(1)}F · 目标 ${this.targetFloor}F</div>
+      ${bonus>0?`<div style="color:var(--gold);font-weight:600;margin-top:4px">🔥 连击奖励 +${bonus} 🪙</div>`:''}
+      ${title?`<div class="title-badge">🏆 获得称号：${title}</div>`:''}
+      <div class="modal-btns">
+        <button class="btn" onclick="UI.hideModal('modal-result');Game.playAgain()">🔄 再来一局 &nbsp;<small style="opacity:.7">-10🪙</small></button>
+        <button class="btn btn-sm btn-outline" onclick="UI.hideModal('modal-result');UI.showScreen('lobby')">返回大厅</button>
+      </div>`;
+    UI.showModal('modal-result');
+  },
+
+  playAgain(){
+    this.start();
+  },
+
+  loop(ts){
+    if(this.state==='idle'||this.state==='result')return;
+    const dt=Math.min((ts-this.lastTime)/1000,.1);
+    this.lastTime=ts;
+
+    if(this.state==='rising'){
+      this.elevatorGrid+=this.speed*dt;
+      // Past the top → auto-stop
+      const maxGrid=(this.MAX_FLOOR-1)*this.GRIDS_PER_FLOOR+this.GRIDS_PER_FLOOR-1;
+      if(this.elevatorGrid>=maxGrid&&!this.stopped) this.stopElevator(0,0);
+    }
+
+    // Smooth camera follow
+    const vpGrids=this.VISIBLE_FLOORS*this.GRIDS_PER_FLOOR;
+    let tc=this.elevatorGrid-vpGrids*.32;
+    const pad=2;
+    tc=Math.max(-pad,tc);
+    const maxCam=(this.MAX_FLOOR-1)*this.GRIDS_PER_FLOOR+this.GRIDS_PER_FLOOR-vpGrids+pad;
+    tc=Math.min(tc,maxCam);
+    this.cameraGrid+=(tc-this.cameraGrid)*.12;
+
+    const cf=this.elevatorGrid/this.GRIDS_PER_FLOOR+1;
+    document.getElementById('hud-current').textContent=cf.toFixed(2)+'F';
+
+    this.render();
+
+    if(this.state==='rising'||this.state==='stopping'){
+      this.animId=requestAnimationFrame(t=>this.loop(t));
+    }
+  },
+
+  render(){
+    const ctx=this.ctx,W=this.canvasW,H=this.canvasH;
+    const fH=this.floorH,gH=this.gridH;
+
+    // Sky
+    const sky=ctx.createLinearGradient(0,0,0,H);
+    sky.addColorStop(0,'#1a2332');sky.addColorStop(.5,'#15202B');sky.addColorStop(1,'#0D1520');
+    ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+
+    const numW=W*.16,shaftL=numW+4,shaftW=W-shaftL-4;
+    const carW=shaftW*.52,carL=shaftL+(shaftW-carW)/2;
+
+    // Building body
+    ctx.fillStyle='#1C2030';ctx.fillRect(shaftL-2,0,shaftW+8,H);
+    ctx.fillStyle='#252A38';ctx.fillRect(shaftL-4,0,6,H);
+
+    // Shaft
+    const shaftGrad=ctx.createLinearGradient(shaftL,0,shaftL+shaftW,0);
+    shaftGrad.addColorStop(0,'#12161F');shaftGrad.addColorStop(.5,'#1A1F2A');shaftGrad.addColorStop(1,'#12161F');
+    ctx.fillStyle=shaftGrad;ctx.fillRect(shaftL,0,shaftW,H);
+    ctx.strokeStyle='#2B3139';ctx.lineWidth=1;
+    ctx.strokeRect(shaftL,0,shaftW,H);
+
+    // Guide rails
+    ctx.strokeStyle='#252A35';ctx.lineWidth=1;
+    [carL-3,carL+carW+3].forEach(rx=>{
+      ctx.beginPath();ctx.setLineDash([2,8]);ctx.moveTo(rx,0);ctx.lineTo(rx,H);ctx.stroke();ctx.setLineDash([]);
+    });
+
+    // Grid range
+    const sG=Math.floor(this.cameraGrid),eG=Math.ceil(this.cameraGrid+this.VISIBLE_FLOORS*this.GRIDS_PER_FLOOR);
+    for(let g=sG;g<=eG;g++){
+      const sy=H-(g-this.cameraGrid)*gH;
+      if(sy<-50||sy>H+50)continue;
+      const isFloor=g%this.GRIDS_PER_FLOOR===0;
+      if(isFloor){
+        ctx.strokeStyle='#2B3139';ctx.lineWidth=1.5;ctx.setLineDash([]);
+        ctx.beginPath();ctx.moveTo(shaftL,sy);ctx.lineTo(W-4,sy);ctx.stroke();
+        const fn=Math.floor(g/this.GRIDS_PER_FLOOR)+1;
+        if(fn>=1&&fn<=18){
+          ctx.fillStyle='#848E9C';ctx.font=`${Math.max(11,fH*.3)}px ${this._font}`;
+          ctx.textAlign='center';ctx.fillText(fn,numW/2,sy+fH*.12);
+        }
+      }else{
+        ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;ctx.setLineDash([3,8]);
+        ctx.beginPath();ctx.moveTo(shaftL+10,sy);ctx.lineTo(W-14,sy);ctx.stroke();ctx.setLineDash([]);
+      }
+    }
+
+    // Target marker
+    const tSY=H-(this.targetGrid-this.cameraGrid)*gH;
+    if(tSY>-30&&tSY<H+30){
+      // Glow
+      const glow=ctx.createRadialGradient(carL+carW/2,tSY,2,carL+carW/2,tSY,fH*1.2);
+      glow.addColorStop(0,'rgba(240,185,11,.25)');glow.addColorStop(1,'rgba(240,185,11,0)');
+      ctx.fillStyle=glow;ctx.fillRect(shaftL,tSY-fH,shaftW,fH*2);
+
+      ctx.strokeStyle='#F0B90B';ctx.lineWidth=2.5;ctx.shadowColor='rgba(240,185,11,.5)';ctx.shadowBlur=8;
+      ctx.beginPath();ctx.moveTo(shaftL,tSY);ctx.lineTo(W-4,tSY);ctx.stroke();
+      ctx.shadowBlur=0;
+
+      // Dot
+      ctx.fillStyle='#F0B90B';ctx.beginPath();ctx.arc(shaftL-10,tSY,5,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#F0B90B';ctx.font=`${Math.max(10,fH*.25)}px ${this._font}`;
+      ctx.textAlign='right';ctx.fillText('⭐',shaftL-16,tSY-8);
+    }
+
+    // Elevator car
+    const eSY=H-(this.elevatorGrid-this.cameraGrid)*gH;
+    const carH=fH*.65,carT=eSY-carH/2;
+    if(carT>-carH&&carT<H+carH){
+      const cx=Math.round(carL),cy=Math.round(carT),cw=Math.round(carW),ch=Math.round(carH);
+
+      // Shadow
+      ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(cx+3,cy+3,cw,ch);
+
+      // Body gradient
+      const carGrad=ctx.createLinearGradient(cx,cy,cx+cw,cy+ch);
+      carGrad.addColorStop(0,'#4B8EFF');carGrad.addColorStop(.5,'#3B7CFF');carGrad.addColorStop(1,'#2563EB');
+      ctx.fillStyle=carGrad;
+      this.roundRect(ctx,cx,cy,cw,ch,6);ctx.fill();
+
+      // Border
+      ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=2;
+      this.roundRect(ctx,cx+1,cy+1,cw-2,ch-2,5);ctx.stroke();
+
+      // Inner highlight
+      ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;
+      this.roundRect(ctx,cx+4,cy+4,cw-8,ch-8,3);ctx.stroke();
+
+      // Door line
+      ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(cx+cw/2,cy+5);ctx.lineTo(cx+cw/2,cy+ch-5);ctx.stroke();
+
+      // Floor indicator
+      const cf=this.elevatorGrid/this.GRIDS_PER_FLOOR+1;
+      ctx.fillStyle='#fff';ctx.font=`bold ${Math.max(9,fH*.22)}px ${this._font}`;
+      ctx.textAlign='center';ctx.fillText(cf.toFixed(0),cx+cw/2,cy+ch/2+3);
+    }
+
+    // Ground when visible
+    const gY=H-(-this.cameraGrid)*gH;
+    if(gY>0&&gY<H){
+      ctx.fillStyle='#1C2030';ctx.fillRect(0,gY,W,H-gY);
+      ctx.fillStyle='#2B3139';ctx.fillRect(0,gY,W,3);
+    }
+  },
+
+  roundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);
+    ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);
+    ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);
+    ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);
+    ctx.arcTo(x,y,x+r,y,r);ctx.closePath();
+  },
+
+  cleanup(){
+    if(this.animId){cancelAnimationFrame(this.animId);this.animId=null}
+    this.state='idle';
+  },
+
+  randInt(a,b){return Math.floor(Math.random()*(b-a+1))+a}
+};
+
+// ============================================================================
+//  INIT
+// ============================================================================
+(function(){
+  // Tab bar delegate
+  document.getElementById('tab-bar').addEventListener('click',function(e){
+    const btn=e.target.closest('.tab-btn');if(!btn)return;
+    UI.switchTab(btn.dataset.tab);
+  });
+
+  // Prevent canvas touch scroll
+  document.getElementById('gameCanvas').addEventListener('touchstart',function(e){e.preventDefault()},{passive:false});
+  document.getElementById('app').addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
+
+  // Auto-fill last account
+  const last=Storage.getLast();
+  if(last) document.getElementById('login-account').value=last;
+})();
+</script>
+</body>
+</html>
