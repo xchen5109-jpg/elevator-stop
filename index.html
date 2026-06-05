@@ -816,8 +816,8 @@ const Game={
     this.ctx=this.canvas.getContext('2d');this.ctx.scale(dpr,dpr);
     this.floorH=this.canvasH/this.VISIBLE_FLOORS;this.gridH=this.floorH/this.GRIDS_PER_FLOOR;
     this._font=getComputedStyle(document.body).fontFamily;
-    this.canvas.onclick=null;const self=this;
-    this.canvas.onclick=function(e){if(self.state==='rising'){const rect=self.canvas.getBoundingClientRect();self.stopElevator(e.clientX-rect.left,e.clientY-rect.top)}}
+    const self=this;
+    this.canvas.onpointerdown=function(e){if(self.state==='rising'){e.preventDefault();const rect=self.canvas.getBoundingClientRect();self.stopElevator(e.clientX-rect.left,e.clientY-rect.top)}}
   },
 
   stopElevator(cx,cy){
@@ -891,7 +891,7 @@ const Game={
 (function(){
   document.getElementById('tab-bar').addEventListener('click',function(e){const btn=e.target.closest('.tab-btn');if(!btn)return;UI.switchTab(btn.dataset.tab)});
   document.getElementById('admin-tab-bar').addEventListener('click',function(e){const btn=e.target.closest('.tab-btn');if(!btn)return;UI.switchAdminTab(btn.dataset.atab)});
-  document.getElementById('gameCanvas').addEventListener('touchstart',function(e){e.preventDefault()},{passive:false});
+  document.getElementById('gameCanvas').addEventListener('contextmenu',function(e){e.preventDefault()});
   document.getElementById('app').addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
   const last=S.getLast();if(last)document.getElementById('login-account').value=last;
 })();
