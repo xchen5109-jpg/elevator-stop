@@ -80,7 +80,7 @@ body{display:flex;justify-content:center;align-items:center}
 .game-hud-val.gold{color:var(--gold)}
 .game-hud-val.target{color:var(--gold);font-size:22px}
 .game-canvas-wrap{flex:1;position:relative;overflow:hidden;background:#0D1117}
-#gameCanvas{display:block;width:100%;height:100%}
+#gameCanvas{display:block;width:100%;height:100%;touch-action:none}
 .game-tap-hint{position:absolute;bottom:18%;left:50%;transform:translateX(-50%);font-size:14px;font-weight:500;color:rgba(255,255,255,.5);pointer-events:none;animation:hintPulse 2.2s ease-in-out infinite;background:rgba(22,26,35,.8);padding:8px 20px;border-radius:20px;border:1px solid rgba(255,255,255,.08)}
 @keyframes hintPulse{0%,100%{opacity:.35;transform:translateX(-50%) translateY(0)}50%{opacity:.85;transform:translateX(-50%) translateY(-6px)}}
 .game-bottom{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:rgba(22,26,35,.95);border-top:1px solid var(--border);flex-shrink:0;font-size:13px}
@@ -817,7 +817,18 @@ const Game={
     this.floorH=this.canvasH/this.VISIBLE_FLOORS;this.gridH=this.floorH/this.GRIDS_PER_FLOOR;
     this._font=getComputedStyle(document.body).fontFamily;
     const self=this;
-    this.canvas.onpointerdown=function(e){if(self.state==='rising'){e.preventDefault();const rect=self.canvas.getBoundingClientRect();self.stopElevator(e.clientX-rect.left,e.clientY-rect.top)}}
+    // Use addEventListener for reliable mobile touch
+    this.canvas.onpointerdown=null;
+    this.canvas.addEventListener('pointerdown',function h(e){
+      if(self.state!=='rising')return;
+      e.preventDefault();e.stopPropagation();
+      self.stopElevator();
+    });
+    // Fallback for older browsers
+    this.canvas.addEventListener('click',function h(e){
+      if(self.state!=='rising')return;
+      self.stopElevator();
+    });
   },
 
   stopElevator(cx,cy){
