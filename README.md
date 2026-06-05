@@ -6,8 +6,6 @@
 
 ![QR Code](qrcode.png)
 
-> 🔗 [xchen5109-jpg.github.io/elevator-stop](https://xchen5109-jpg.github.io/elevator-stop/)
-
 ## 🎮 怎么玩
 
 1. 注册 6 位数字账号（送 10 金币试玩）
