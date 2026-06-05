@@ -548,11 +548,11 @@ const TxHistory={
 // ADMIN
 // ============================================================================
 const Admin={
-  refresh(){this.renderDashboard();this.refreshQR()},
+  refresh(){this.renderDashboard();this.renderReview();this.refreshQR()},
   renderDashboard(){
     const accs=S.getAccounts();const txs=S.getTransactions();
     const totalUsers=Object.keys(accs).length;
-    const pending=txs.filter(t=>t.status==='pending').length;
+    const pending=txs.filter(t=>t.status==='pending');
     const today=new Date().toDateString();
     const todayNew=Object.values(accs).filter(a=>new Date(a.createdAt).toDateString()===today).length;
     const totalFlow=txs.filter(t=>t.status==='approved').reduce((s,t)=>s+(t.type==='recharge'?t.amount:0),0);
@@ -560,11 +560,18 @@ const Admin={
       <div class="admin-stats">
         <div class="admin-stat"><div class="admin-stat-num">${totalUsers}</div><div class="admin-stat-label">总用户</div></div>
         <div class="admin-stat"><div class="admin-stat-num" style="color:var(--blue)">${todayNew}</div><div class="admin-stat-label">今日新增</div></div>
-        <div class="admin-stat"><div class="admin-stat-num" style="color:var(--orange)">${pending}</div><div class="admin-stat-label">待审核</div></div>
+        <div class="admin-stat"><div class="admin-stat-num" style="color:var(--orange)">${pending.length}</div><div class="admin-stat-label">待审核</div></div>
         <div class="admin-stat"><div class="admin-stat-num">¥${totalFlow}</div><div class="admin-stat-label">总流水</div></div>
       </div>
       <div class="divider"></div>
-      <div class="section-title">📋 最近审核</div>
+      <div class="section-title">🔶 待审核 (${pending.length}) ${pending.length>0?'<span style="font-size:11px;color:var(--blue);cursor:pointer" onclick="UI.switchAdminTab(\'review\')">查看全部→</span>':''}</div>
+      ${pending.length===0?'<div class="empty-state">暂无待审核</div>':pending.map(t=>{
+        const isR=t.type==='recharge';const mName=t.method==='wechat'?'微信':t.method==='alipay'?'支付宝':'银行卡';
+        let extra='';if(!isR){extra=`<div>收款方: ${t.accountInfo||''}${t.bankName?' / '+t.bankName:''}${t.cardHolder?' / '+t.cardHolder:''}</div>`}
+        return `<div class="review-card"><div class="review-card-header"><span class="badge badge-orange">${isR?'💰 充值':'💸 提现'}</span><span style="font-size:11px;color:var(--text3)">${new Date(t.createdAt).toLocaleString()}</span></div><div class="review-card-body"><div>账号: <b>${t.accountId}</b> | ${mName}</div><div>金额: <b style="color:var(--gold)">${isR?'¥'+t.amount+' → '+t.gold+'🪙':t.amount+'🪙'}</b></div>${extra}</div><div class="review-card-actions"><button class="btn btn-sm btn-green" onclick="Admin.approve(${t.id})">✅ 通过</button><button class="btn btn-sm btn-red" onclick="Admin.rejectDialog(${t.id})">❌ 拒绝</button></div></div>`;
+      }).join('')}
+      <div class="divider"></div>
+      <div class="section-title">📋 最近已审核</div>
       ${txs.filter(t=>t.status!=='pending').slice(-5).reverse().map(t=>{
         const isR=t.type==='recharge';const st=t.status==='approved'?'✅':'❌';
         return `<div style="font-size:12px;color:var(--text2);padding:6px 0;border-bottom:1px solid var(--border)">${st} ${isR?'充值':'提现'} | ${t.accountId} | ${isR?'¥'+t.amount:t.amount+'🪙'} | ${new Date(t.reviewedAt||t.createdAt).toLocaleString()}</div>`;
