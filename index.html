@@ -788,7 +788,7 @@ const CS={
 const Game={
   VISIBLE_FLOORS:10,MAX_FLOOR:18,TARGET_MIN:3,GRIDS_PER_FLOOR:5,COST:10,
   state:'idle',targetFloor:0,targetSubGrid:0,targetGrid:0,elevatorGrid:0,speed:0,animId:null,lastTime:0,cameraGrid:0,stopped:false,combo:0,
-  canvas:null,ctx:null,canvasW:0,canvasH:0,floorH:0,gridH:0,_font:'',
+  canvas:null,ctx:null,canvasW:0,canvasH:0,floorH:0,gridH:0,_font:'',_ph:null,_ch:null,
 
   start(){
     if(this.state==='rising'||this.state==='stopping')return;
@@ -816,19 +816,14 @@ const Game={
     this.ctx=this.canvas.getContext('2d');this.ctx.scale(dpr,dpr);
     this.floorH=this.canvasH/this.VISIBLE_FLOORS;this.gridH=this.floorH/this.GRIDS_PER_FLOOR;
     this._font=getComputedStyle(document.body).fontFamily;
+    // Remove old listeners before adding new ones
+    if(this._ph)this.canvas.removeEventListener('pointerdown',this._ph);
+    if(this._ch)this.canvas.removeEventListener('click',this._ch);
     const self=this;
-    // Use addEventListener for reliable mobile touch
-    this.canvas.onpointerdown=null;
-    this.canvas.addEventListener('pointerdown',function h(e){
-      if(self.state!=='rising')return;
-      e.preventDefault();e.stopPropagation();
-      self.stopElevator();
-    });
-    // Fallback for older browsers
-    this.canvas.addEventListener('click',function h(e){
-      if(self.state!=='rising')return;
-      self.stopElevator();
-    });
+    this._ph=function(e){if(self.state==='rising'){e.preventDefault();self.stopElevator()}};
+    this._ch=function(e){if(self.state==='rising')self.stopElevator()};
+    this.canvas.addEventListener('pointerdown',this._ph);
+    this.canvas.addEventListener('click',this._ch);
   },
 
   stopElevator(cx,cy){
