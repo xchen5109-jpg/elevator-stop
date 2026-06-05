@@ -816,14 +816,7 @@ const Game={
     this.ctx=this.canvas.getContext('2d');this.ctx.scale(dpr,dpr);
     this.floorH=this.canvasH/this.VISIBLE_FLOORS;this.gridH=this.floorH/this.GRIDS_PER_FLOOR;
     this._font=getComputedStyle(document.body).fontFamily;
-    // Remove old listeners before adding new ones
-    if(this._ph)this.canvas.removeEventListener('pointerdown',this._ph);
-    if(this._ch)this.canvas.removeEventListener('click',this._ch);
-    const self=this;
-    this._ph=function(e){if(self.state==='rising'){e.preventDefault();self.stopElevator()}};
-    this._ch=function(e){if(self.state==='rising')self.stopElevator()};
-    this.canvas.addEventListener('pointerdown',this._ph);
-    this.canvas.addEventListener('click',this._ch);
+    // Event handled by permanent listener on canvas-wrap (see init)
   },
 
   stopElevator(cx,cy){
@@ -897,7 +890,16 @@ const Game={
 (function(){
   document.getElementById('tab-bar').addEventListener('click',function(e){const btn=e.target.closest('.tab-btn');if(!btn)return;UI.switchTab(btn.dataset.tab)});
   document.getElementById('admin-tab-bar').addEventListener('click',function(e){const btn=e.target.closest('.tab-btn');if(!btn)return;UI.switchAdminTab(btn.dataset.atab)});
-  document.getElementById('gameCanvas').addEventListener('contextmenu',function(e){e.preventDefault()});
+  // Permanent game click handler (once, never removed)
+  document.getElementById('canvas-wrap').addEventListener('pointerdown',function(e){
+    if(Game.state!=='rising')return;
+    e.preventDefault();e.stopPropagation();
+    Game.stopElevator();
+  });
+  document.getElementById('canvas-wrap').addEventListener('click',function(e){
+    if(Game.state!=='rising')return;
+    Game.stopElevator();
+  });
   document.getElementById('app').addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
   const last=S.getLast();if(last)document.getElementById('login-account').value=last;
 })();
