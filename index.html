@@ -478,7 +478,7 @@ const UI={
     const acc=await Account.getData();const el=document.getElementById('stats-inner');
     if(!acc){el.innerHTML='<div class="card" style="text-align:center;color:var(--text2)">暂无数据</div>';return}
     const s=acc.stats;const tot=s.totalGames||0;const pr=tot>0?Math.round((s.perfects||0)/tot*100):0;const net=(s.totalEarned||0)-(s.totalSpent||0);
-    el.innerHTML=`<div class="card">${[['总局数',tot],['完美次数',s.perfects||0],['完美率',pr+'%'],['最高连击',(s.bestCombo||0)+'x'],['累计获得','+'+((s.totalEarned||0))+'🪙'],['累计消耗','-'+((s.totalSpent||0))+'🪙'],['净盈亏',(net>=0?'+':'')+net+'🪙'],['已获称号',(s.titles&&s.titles.length?s.titles.join(' · '):'暂无')],['当前连击',(acc.currentCombo||0)+'x']].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--text2)">${l}</span><span style="font-weight:600">${v}</span></div>`).join('')}</div>`;
+    el.innerHTML=`<div class="card">${[['总局数',tot],['完美次数',s.perfects||0],['完美率',pr+'%'],['最高连击',(s.bestCombo||0)+'x'],['累计获得','+'+((s.totalEarned||0))+'🪙'],['累计消耗','-'+((s.totalSpent||0))+'🪙'],['净盈亏',(net>=0?'+':'')+net+'🪙'],['已获称号',(s.titles&&s.titles.length?s.titles.join(' · '):'暂无')],['当前连击',(acc.current_combo||0)+'x']].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--text2)">${l}</span><span style="font-weight:600">${v}</span></div>`).join('')}</div>`;
   },
   showToast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className='toast '+type+' show';clearTimeout(t._tid);t._tid=setTimeout(()=>{t.classList.remove('show')},2200)},
   floatScore(x,y,text,color){const el=document.createElement('div');el.className='score-float';el.textContent=text;el.style.left=x+'px';el.style.top=y+'px';el.style.color=color;document.getElementById('canvas-wrap').appendChild(el);setTimeout(()=>el.remove(),900)}
@@ -500,8 +500,10 @@ const Account={
     if(id===this.ADMIN_ID){err.textContent='该账号已被保留';return}
     if(!this.isValid(pin)){err.textContent='密码需4-10位数字';return}
     if(pin!==pin2){err.textContent='两次密码不一致';return}
-    if(await S.getAccount(id)){err.textContent='该账号已存在';return}
-    await S.saveAccount(id,{pin,gold:10,stats:{totalGames:0,perfects:0,bestCombo:0,titles:[],totalEarned:0,totalSpent:0},currentCombo:0,createdAt:Date.now()});
+    try{
+      if(await S.getAccount(id)){err.textContent='该账号已存在';return}
+      await S.saveAccount(id,{pin,gold:10,stats:{totalGames:0,perfects:0,bestCombo:0,titles:[],totalEarned:0,totalSpent:0},current_combo:0,created_at:new Date().toISOString()});
+    }catch(e){err.textContent='注册失败，请检查网络';console.error(e);return}
     S.setLast(id);['reg-account','reg-pin','reg-pin2'].forEach(n=>document.getElementById(n).value='');
     err.textContent='';App.currentAccount=id;App.isAdmin=false;
     UI.showToast('🎉 注册成功！赠送10金币','success');UI.showScreen('lobby');
@@ -842,7 +844,7 @@ const Game={
     this.targetSubGrid=this.randInt(0,Game.GRIDS_PER_FLOOR-1);
     this.targetGrid=(this.targetFloor-1)*Game.GRIDS_PER_FLOOR+this.targetSubGrid;
     const base=12;this.speed=base*(1+(this.targetFloor-3)*0.06);
-    this.elevatorGrid=0;this.cameraGrid=-2;this.stopped=false;this.state='rising';this.combo=(acc.currentCombo||0);
+    this.elevatorGrid=0;this.cameraGrid=-2;this.stopped=false;this.state='rising';this.combo=(acc.current_combo||0);
     document.getElementById('hud-target').textContent=this.targetFloor+'F';
     document.getElementById('hud-current').textContent='1.0F';
     document.getElementById('hud-gold').textContent=acc.gold;
@@ -872,7 +874,7 @@ const Game={
     const acc=await Account.getData();acc.gold+=reward+bonus;acc.stats.totalGames=(acc.stats.totalGames||0)+1;
     if(type==='perfect')acc.stats.perfects=(acc.stats.perfects||0)+1;
     if(this.combo>acc.stats.bestCombo)acc.stats.bestCombo=this.combo;
-    acc.stats.totalEarned=(acc.stats.totalEarned||0)+reward+bonus;acc.currentCombo=this.combo;
+    acc.stats.totalEarned=(acc.stats.totalEarned||0)+reward+bonus;acc.current_combo=this.combo;
     if(title&&!acc.stats.titles.includes(title))acc.stats.titles.push(title);
     await Account.saveData(acc);
     const stoppedFloor=stoppedGrid/this.GRIDS_PER_FLOOR+1;
