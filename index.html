@@ -221,14 +221,14 @@ body{display:flex;justify-content:center;align-items:center}
 <div class="lobby-wrap">
 <div class="lobby-top"><div class="lobby-account">👤 账号 <span id="lobby-account">------</span></div><div></div></div>
 <div class="gold-hero"><div class="gold-hero-label">🪙 我的金币</div><div class="gold-hero-num" id="lobby-gold">0</div><div class="gold-hero-cny">≈ ¥<span id="lobby-cny">0.00</span></div></div>
-<button class="btn btn-start" onclick="Game.start()" id="btn-start-game">🎯 开始游戏 · 押5🪙 赢15🪙</button>
+<button class="btn btn-start" onclick="Game.start()" id="btn-start-game">🎯 开始游戏</button>
 	<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center" id="bet-selector">
-	  <div class="bet-chip active" data-bet="5" onclick="Game.selectBet(5)">5🪙<small>赢15·10格</small></div>
-	  <div class="bet-chip" data-bet="10" onclick="Game.selectBet(10)">10🪙<small>赢40·14格</small></div>
-	  <div class="bet-chip" data-bet="20" onclick="Game.selectBet(20)">20🪙<small>赢100·18格</small></div>
-	  <div class="bet-chip" data-bet="50" onclick="Game.selectBet(50)">50🪙<small>赢300·24格</small></div>
-	  <div class="bet-chip" data-bet="100" onclick="Game.selectBet(100)">100🪙<small>赢800·30格</small></div>
-	  <div class="bet-chip hot" data-bet="200" onclick="Game.selectBet(200)">200🪙<small>赢2000·40格</small></div>
+	  <div class="bet-chip active" data-bet="5" onclick="Game.selectBet(5)">5🪙<small>赢15</small></div>
+	  <div class="bet-chip" data-bet="10" onclick="Game.selectBet(10)">10🪙<small>赢40</small></div>
+	  <div class="bet-chip" data-bet="20" onclick="Game.selectBet(20)">20🪙<small>赢100</small></div>
+	  <div class="bet-chip" data-bet="50" onclick="Game.selectBet(50)">50🪙<small>赢300</small></div>
+	  <div class="bet-chip" data-bet="100" onclick="Game.selectBet(100)">100🪙<small>赢800</small></div>
+	  <div class="bet-chip hot" data-bet="200" onclick="Game.selectBet(200)">200🪙<small>赢2000</small></div>
 	</div>
 <div class="lobby-grid">
 <div class="lobby-btn" onclick="UI.showProfile('wallet')"><div class="lobby-btn-icon">💰</div><div class="lobby-btn-text">充值</div></div>
@@ -897,8 +897,6 @@ const Game={
   selectBet(amount){
     this.currentBet=amount;
     document.querySelectorAll('.bet-chip').forEach(c=>c.classList.toggle('active',parseInt(c.dataset.bet)===amount));
-    const cfg=this.BET[amount];
-    document.getElementById('btn-start-game').textContent='🎯 开始游戏 · 押'+amount+'🪙 赢'+cfg.perf+'🪙';
   },
 
   async start(){
