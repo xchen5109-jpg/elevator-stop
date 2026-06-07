@@ -373,6 +373,7 @@ body{display:flex;justify-content:center;align-items:center}
 // ============================================================================
 const SUPA='https://olcekoafcyhclmwxfwsz.supabase.co';
 const SUPA_KEY='sb_publishable_vYtt_Xb09dNbxF3gy5MsMA_o09hQ4T1';
+const uid=()=>Date.now()*100+Math.floor(Math.random()*100);
 
 async function sfetch(path,opts={}){
   const h={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json',...opts.headers};
@@ -384,7 +385,7 @@ async function sfetch(path,opts={}){
 const S={
   // Accounts
   async getAccounts(){
-    const rows=await sfetch('accounts?select=id');
+    const rows=await sfetch('accounts?select=*');
     const accs={};
     for(const r of rows){const{id,...rest}=r;accs[id]=rest}
     return accs;
@@ -395,9 +396,7 @@ const S={
     const{id:_,...rest}=rows[0];return rest;
   },
   async saveAccount(id,acc){
-    const existing=await this.getAccount(id);
-    if(existing)await sfetch(`accounts?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(acc)});
-    else await sfetch('accounts',{method:'POST',body:JSON.stringify({id,...acc}),headers:{'Prefer':'return=minimal'}});
+    await sfetch(`accounts?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(acc)});
   },
   // Transactions
   async getTransactions(){
@@ -405,10 +404,11 @@ const S={
     return rows||[];
   },
   async addTransaction(tx){
-    await sfetch('transactions',{method:'POST',body:JSON.stringify({...tx,account_id:tx.accountId,account_info:tx.accountInfo||'',bank_name:tx.bankName||'',card_holder:tx.cardHolder||''}),headers:{'Prefer':'return=minimal'}});
+    const{accountId,accountInfo,bankName,cardHolder,...clean}=tx;
+    await sfetch('transactions',{method:'POST',body:JSON.stringify({...clean,account_id:tx.accountId,account_info:tx.accountInfo||'',bank_name:tx.bankName||'',card_holder:tx.cardHolder||''}),headers:{'Prefer':'return=minimal'}});
   },
   async updateTransaction(id,upd){
-    await sfetch(`transactions?id=eq.${id}`,{method:'PATCH',body:JSON.stringify(upd)});
+    await sfetch(`transactions?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(upd)});
   },
   // QR codes
   async getMeta(){
@@ -418,7 +418,12 @@ const S={
     return {qrCodes};
   },
   async saveMetaKey(method,base64){
-    await sfetch('qr_codes',{method:'POST',body:JSON.stringify({method,image_base64:base64,updated_at:new Date().toISOString()}),headers:{'Prefer':'return=minimal'}});
+    const existing=await sfetch(`qr_codes?method=eq.${method}`);
+    if(existing&&existing.length>0){
+      await sfetch(`qr_codes?method=eq.${method}`,{method:'PATCH',body:JSON.stringify({image_base64:base64,updated_at:new Date().toISOString()})});
+    }else{
+      await sfetch('qr_codes',{method:'POST',body:JSON.stringify({method,image_base64:base64,updated_at:new Date().toISOString()}),headers:{'Prefer':'return=minimal'}});
+    }
   },
   async deleteMetaKey(method){
     await sfetch(`qr_codes?method=eq.${method}`,{method:'DELETE'});
@@ -528,26 +533,31 @@ const Account={
 
     if(!this.isValid(id)){err.textContent='账号需4-10位数字';return}
     if(!this.isValid(pin)){err.textContent='密码需4-10位数字';return}
-    const acc=await S.getAccount(id);
-    if(!acc){err.textContent='账号不存在';return}
-    if(acc.pin!==pin){err.textContent='密码错误';return}
-    document.getElementById('login-account').value='';document.getElementById('login-pin').value='';
-    err.textContent='';App.currentAccount=id;App.isAdmin=false;S.setLast(id);
-
-    // Check for newly approved transactions
-    await this.checkApproved(acc);
-
-    UI.showScreen('lobby');
+    try{
+      const acc=await S.getAccount(id);
+      if(!acc){err.textContent='账号不存在';return}
+      if(acc.pin!==pin){err.textContent='密码错误';return}
+      document.getElementById('login-account').value='';document.getElementById('login-pin').value='';
+      err.textContent='';App.currentAccount=id;App.isAdmin=false;S.setLast(id);
+      await this.checkApproved(acc);
+      UI.showScreen('lobby');
+    }catch(e){err.textContent='登录失败，请检查网络';}
   },
 
   async checkApproved(acc){
     const txs=(await S.getTransactions()).filter(t=>t.account_id===App.currentAccount&&t.status==='approved'&&!t.notified);
     if(txs.length>0){
-      let totalGold=0;
-      for(const t of txs){totalGold+=(t.type==='recharge'?t.gold:-t.gold);await S.updateTransaction(t.id,{notified:true})}
-      acc.gold=(acc.gold||0)+totalGold;
-      await this.saveData(acc);
-      if(totalGold>0) UI.showToast(`✅ ${txs.length}笔审核通过！\n金币 +${totalGold} 🪙`,'success');
+      let addedGold=0;
+      for(const t of txs){
+        await S.updateTransaction(t.id,{notified:true});
+        if(t.type==='recharge'){addedGold+=t.gold}
+        // withdrawal gold was already deducted on submit, nothing to do here
+      }
+      if(addedGold>0){
+        acc.gold=(acc.gold||0)+addedGold;
+        await this.saveData(acc);
+        UI.showToast(`✅ ${txs.length}笔审核通过！\n金币 +${addedGold} 🪙`,'success');
+      }
     }
   },
 
@@ -595,7 +605,7 @@ const TxHistory={
 // ADMIN
 // ============================================================================
 const Admin={
-  refresh(){this.renderDashboard();this.renderReview();this.refreshQR()},
+  async refresh(){await this.renderDashboard();await this.renderReview();await this.refreshQR()},
   async renderDashboard(){
     const accs=await S.getAccounts();const txs=await S.getTransactions();
     const totalUsers=Object.keys(accs).length;
@@ -664,15 +674,11 @@ const Admin={
   },
 
   async approve(id){
-    const txs=await S.getTransactions();const tx=txs.find(t=>t.id===id);if(!tx)return;
+    const txs=await S.getTransactions();const tx=txs.find(t=>t.id===id);
+    if(!tx||tx.status!=='pending')return;
     await S.updateTransaction(id,{status:'approved',reviewed_at:new Date().toISOString(),reviewed_by:App.currentAccount});
-    const acc=await S.getAccount(tx.account_id);
-    if(acc){
-      if(tx.type==='recharge'){acc.gold=(acc.gold||0)+tx.gold}
-      else{acc.gold=(acc.gold||0)-tx.amount}
-      await S.saveAccount(tx.account_id,acc);
-    }
-    this.renderReview();this.renderDashboard();
+    // Gold is added later by checkApproved() when user logs in
+    await this.renderReview();await this.renderDashboard();
     UI.showToast('✅ 已通过','success');
   },
 
@@ -685,8 +691,15 @@ const Admin={
   },
 
   async reject(id){
+    const txs=await S.getTransactions();const tx=txs.find(t=>t.id===id);
+    if(!tx||tx.status!=='pending')return;
     await S.updateTransaction(id,{status:'rejected',reviewed_at:new Date().toISOString(),reviewed_by:App.currentAccount});
-    UI.hideModal('modal-review-reject');this.renderReview();this.renderDashboard();
+    // Refund gold for rejected withdrawals
+    if(tx.type==='withdraw'){
+      const acc=await S.getAccount(tx.account_id);
+      if(acc){acc.gold=(acc.gold||0)+tx.amount;await S.saveAccount(tx.account_id,acc);}
+    }
+    UI.hideModal('modal-review-reject');await this.renderReview();await this.renderDashboard();
     UI.showToast('已拒绝','error');
   },
 
@@ -713,7 +726,7 @@ const Admin={
       else Admin._saveQR(method,base64);
     };reader.readAsDataURL(file);
   },
-  _saveQR(method,base64){S.saveMetaKey(method,base64);this.refreshQR();UI.showToast('✅ 收款码已保存','success')},
+  async _saveQR(method,base64){await S.saveMetaKey(method,base64);await this.refreshQR();UI.showToast('✅ 收款码已保存','success')},
   async clearQR(method){await S.deleteMetaKey(method);this.refreshQR();UI.showToast('已清除收款码')},
   async getQR(method){const meta=await S.getMeta();return(meta.qrCodes&&meta.qrCodes[method])||null},
 
@@ -754,7 +767,7 @@ const Recharge={
   async submit(){
     const gold=this.amount>=100?Math.floor(this.amount*1.5):this.amount;
     UI.hideModal('modal-qr');
-    await S.addTransaction({id:Date.now(),type:'recharge',accountId:App.currentAccount,amount:this.amount,gold,method:this.method,status:'pending',created_at:new Date().toISOString(),reviewed_at:null,reviewed_by:null,notified:false});
+    await S.addTransaction({id:uid(),type:'recharge',accountId:App.currentAccount,amount:this.amount,gold,method:this.method,status:'pending',created_at:new Date().toISOString(),reviewed_at:null,reviewed_by:null,notified:false});
     UI.showModal('modal-submitted');
   }
 };
@@ -796,7 +809,10 @@ const Withdraw={
     else if(this.method==='alipay'){accountInfo=document.getElementById('wd-alipay-id')?.value.trim()||'';if(!accountInfo){UI.showToast('请输入支付宝账号','error');return}}
     else{cardHolder=document.getElementById('wd-bank-name')?.value.trim()||'';accountInfo=document.getElementById('wd-bank-card')?.value.trim()||'';bankName=document.getElementById('wd-bank-bank')?.value.trim()||'';if(!cardHolder){UI.showToast('请输入持卡人姓名','error');return}if(!accountInfo||accountInfo.length<10){UI.showToast('请输入正确的银行卡号','error');return}if(!bankName){UI.showToast('请输入开户银行','error');return}}
 
-    await S.addTransaction({id:Date.now(),type:'withdraw',accountId:App.currentAccount,amount:amt,gold:amt,method:this.method,accountInfo,bankName,cardHolder,status:'pending',created_at:new Date().toISOString(),reviewed_at:null,reviewed_by:null,notified:false});
+    // Deduct gold immediately
+    acc.gold=(acc.gold||0)-amt;
+    await Account.saveData(acc);
+    await S.addTransaction({id:uid(),type:'withdraw',accountId:App.currentAccount,amount:amt,gold:amt,method:this.method,accountInfo,bankName,cardHolder,status:'pending',created_at:new Date().toISOString(),reviewed_at:null,reviewed_by:null,notified:false});
     document.getElementById('withdraw-amount').value='';
     await this.refresh();
     UI.showModal('modal-submitted');
