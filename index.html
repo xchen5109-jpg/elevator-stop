@@ -369,23 +369,63 @@ body{display:flex;justify-content:center;align-items:center}
 
 <script>
 // ============================================================================
-// STORAGE
+// SUPABASE CLOUD STORAGE
 // ============================================================================
-const SK='elevator_app_v3';
+const SUPA='https://olcekoafcyhclmwxfwsz.supabase.co';
+const SUPA_KEY='sb_publishable_vYtt_Xb09dNbxF3gy5MsMA_o09hQ4T1';
+
+async function sfetch(path,opts={}){
+  const h={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json',...opts.headers};
+  const r=await fetch(SUPA+'/rest/v1/'+path,{...opts,headers:h});
+  if(!r.ok){const e=await r.text();throw new Error(e)}
+  const t=await r.text();return t?JSON.parse(t):null;
+}
+
 const S={
-  load(){try{return JSON.parse(localStorage.getItem(SK))||{}}catch{return{}}},
-  save(d){localStorage.setItem(SK,JSON.stringify(d))},
-  getAccounts(){return this.load().accounts||{}},
-  getAccount(id){return this.getAccounts()[id]||null},
-  saveAccount(id,acc){const d=this.load();if(!d.accounts)d.accounts={};d.accounts[id]=acc;this.save(d)},
-  getTransactions(){return this.load().transactions||[]},
-  saveTransactions(tx){const d=this.load();d.transactions=tx;this.save(d)},
-  addTransaction(tx){const txs=this.getTransactions();txs.push(tx);this.saveTransactions(txs)},
-  updateTransaction(id,upd){const txs=this.getTransactions();const i=txs.findIndex(t=>t.id===id);if(i>=0){Object.assign(txs[i],upd);this.saveTransactions(txs)} },
-  getMeta(){return this.load().meta||{}},
-  saveMeta(m){const d=this.load();d.meta=m;this.save(d)},
-  setLast(id){const d=this.load();d.lastAccount=id;this.save(d)},
-  getLast(){return this.load().lastAccount||null}
+  // Accounts
+  async getAccounts(){
+    const rows=await sfetch('accounts?select=id');
+    const accs={};
+    for(const r of rows){const{id,...rest}=r;accs[id]=rest}
+    return accs;
+  },
+  async getAccount(id){
+    const rows=await sfetch(`accounts?id=eq.${encodeURIComponent(id)}`);
+    if(!rows||rows.length===0)return null;
+    const{id:_,...rest}=rows[0];return rest;
+  },
+  async saveAccount(id,acc){
+    const existing=await this.getAccount(id);
+    if(existing)await sfetch(`accounts?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(acc)});
+    else await sfetch('accounts',{method:'POST',body:JSON.stringify({id,...acc}),headers:{'Prefer':'return=minimal'}});
+  },
+  // Transactions
+  async getTransactions(){
+    const rows=await sfetch('transactions?order=created_at.asc');
+    return rows||[];
+  },
+  async addTransaction(tx){
+    await sfetch('transactions',{method:'POST',body:JSON.stringify({...tx,account_id:tx.accountId,account_info:tx.accountInfo||'',bank_name:tx.bankName||'',card_holder:tx.cardHolder||''}),headers:{'Prefer':'return=minimal'}});
+  },
+  async updateTransaction(id,upd){
+    await sfetch(`transactions?id=eq.${id}`,{method:'PATCH',body:JSON.stringify(upd)});
+  },
+  // QR codes
+  async getMeta(){
+    const rows=await sfetch('qr_codes?select=*');
+    const qrCodes={};
+    if(rows)rows.forEach(r=>{qrCodes[r.method]=r.image_base64});
+    return {qrCodes};
+  },
+  async saveMetaKey(method,base64){
+    await sfetch('qr_codes',{method:'POST',body:JSON.stringify({method,image_base64:base64,updated_at:new Date().toISOString()}),headers:{'Prefer':'return=minimal'}});
+  },
+  async deleteMetaKey(method){
+    await sfetch(`qr_codes?method=eq.${method}`,{method:'DELETE'});
+  },
+  // Device-local (not synced)
+  setLast(id){localStorage.setItem('el_last',id||'')},
+  getLast(){return localStorage.getItem('el_last')||null}
 };
 
 // ============================================================================
@@ -432,10 +472,10 @@ const UI={
   },
   showModal(id){document.getElementById(id).classList.add('active')},
   hideModal(id){document.getElementById(id).classList.remove('active')},
-  updateLobby(){const acc=Account.getData();const g=acc?acc.gold:0;document.getElementById('lobby-gold').textContent=g;document.getElementById('lobby-cny').textContent=(g*1).toFixed(2);document.getElementById('lobby-account').textContent=App.currentAccount||'------'},
-  updateProfileGold(){const acc=Account.getData();const g=acc?acc.gold:0;document.getElementById('profile-gold').textContent=g;document.getElementById('profile-cny').textContent=(g*1).toFixed(2)},
-  renderStats(){
-    const acc=Account.getData();const el=document.getElementById('stats-inner');
+  async updateLobby(){const acc=await Account.getData();const g=acc?acc.gold:0;document.getElementById('lobby-gold').textContent=g;document.getElementById('lobby-cny').textContent=(g*1).toFixed(2);document.getElementById('lobby-account').textContent=App.currentAccount||'------'},
+  async updateProfileGold(){const acc=await Account.getData();const g=acc?acc.gold:0;document.getElementById('profile-gold').textContent=g;document.getElementById('profile-cny').textContent=(g*1).toFixed(2)},
+  async renderStats(){
+    const acc=await Account.getData();const el=document.getElementById('stats-inner');
     if(!acc){el.innerHTML='<div class="card" style="text-align:center;color:var(--text2)">暂无数据</div>';return}
     const s=acc.stats;const tot=s.totalGames||0;const pr=tot>0?Math.round((s.perfects||0)/tot*100):0;const net=(s.totalEarned||0)-(s.totalSpent||0);
     el.innerHTML=`<div class="card">${[['总局数',tot],['完美次数',s.perfects||0],['完美率',pr+'%'],['最高连击',(s.bestCombo||0)+'x'],['累计获得','+'+((s.totalEarned||0))+'🪙'],['累计消耗','-'+((s.totalSpent||0))+'🪙'],['净盈亏',(net>=0?'+':'')+net+'🪙'],['已获称号',(s.titles&&s.titles.length?s.titles.join(' · '):'暂无')],['当前连击',(acc.currentCombo||0)+'x']].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--text2)">${l}</span><span style="font-weight:600">${v}</span></div>`).join('')}</div>`;
@@ -451,7 +491,7 @@ const Account={
   ADMIN_ID:'9512367',ADMIN_PW:'7694359',
   isValid(s){return /^\d{4,10}$/.test(s)},
 
-  register(){
+  async register(){
     const id=document.getElementById('reg-account').value.trim();
     const pin=document.getElementById('reg-pin').value.trim();
     const pin2=document.getElementById('reg-pin2').value.trim();
@@ -460,14 +500,14 @@ const Account={
     if(id===this.ADMIN_ID){err.textContent='该账号已被保留';return}
     if(!this.isValid(pin)){err.textContent='密码需4-10位数字';return}
     if(pin!==pin2){err.textContent='两次密码不一致';return}
-    if(S.getAccount(id)){err.textContent='该账号已存在';return}
-    S.saveAccount(id,{pin,gold:10,stats:{totalGames:0,perfects:0,bestCombo:0,titles:[],totalEarned:0,totalSpent:0},currentCombo:0,createdAt:Date.now()});
+    if(await S.getAccount(id)){err.textContent='该账号已存在';return}
+    await S.saveAccount(id,{pin,gold:10,stats:{totalGames:0,perfects:0,bestCombo:0,titles:[],totalEarned:0,totalSpent:0},currentCombo:0,createdAt:Date.now()});
     S.setLast(id);['reg-account','reg-pin','reg-pin2'].forEach(n=>document.getElementById(n).value='');
     err.textContent='';App.currentAccount=id;App.isAdmin=false;
     UI.showToast('🎉 注册成功！赠送10金币','success');UI.showScreen('lobby');
   },
 
-  login(){
+  async login(){
     const id=document.getElementById('login-account').value.trim();
     const pin=document.getElementById('login-pin').value.trim();
     const err=document.getElementById('login-error');
@@ -481,44 +521,44 @@ const Account={
 
     if(!this.isValid(id)){err.textContent='账号需4-10位数字';return}
     if(!this.isValid(pin)){err.textContent='密码需4-10位数字';return}
-    const acc=S.getAccount(id);
+    const acc=await S.getAccount(id);
     if(!acc){err.textContent='账号不存在';return}
     if(acc.pin!==pin){err.textContent='密码错误';return}
     document.getElementById('login-account').value='';document.getElementById('login-pin').value='';
     err.textContent='';App.currentAccount=id;App.isAdmin=false;S.setLast(id);
 
     // Check for newly approved transactions
-    this.checkApproved(acc);
+    await this.checkApproved(acc);
 
     UI.showScreen('lobby');
   },
 
-  checkApproved(acc){
-    const txs=S.getTransactions().filter(t=>t.accountId===App.currentAccount&&t.status==='approved'&&!t.notified);
+  async checkApproved(acc){
+    const txs=(await S.getTransactions()).filter(t=>t.account_id===App.currentAccount&&t.status==='approved'&&!t.notified);
     if(txs.length>0){
       let totalGold=0;
-      txs.forEach(t=>{totalGold+=(t.type==='recharge'?t.gold:-t.gold);S.updateTransaction(t.id,{notified:true})});
+      for(const t of txs){totalGold+=(t.type==='recharge'?t.gold:-t.gold);await S.updateTransaction(t.id,{notified:true})}
       acc.gold=(acc.gold||0)+totalGold;
-      this.saveData(acc);
+      await this.saveData(acc);
       if(totalGold>0) UI.showToast(`✅ ${txs.length}笔审核通过！\n金币 +${totalGold} 🪙`,'success');
     }
   },
 
   logout(){App.currentAccount=null;App.isAdmin=false;S.setLast(null);UI.showToast('已退出登录');UI.showScreen('login')},
-  getData(){return App.currentAccount?S.getAccount(App.currentAccount):null},
-  saveData(d){if(App.currentAccount)S.saveAccount(App.currentAccount,d)},
-  addGold(amt){const acc=this.getData();if(!acc)return;acc.gold=(acc.gold||0)+amt;this.saveData(acc)},
+  async getData(){return App.currentAccount?await S.getAccount(App.currentAccount):null},
+  async saveData(d){if(App.currentAccount)await S.saveAccount(App.currentAccount,d)},
+  async addGold(amt){const acc=await this.getData();if(!acc)return;acc.gold=(acc.gold||0)+amt;await this.saveData(acc)},
 
-  changePassword(){
+  async changePassword(){
     const old=document.getElementById('pw-old').value.trim();
     const nw=document.getElementById('pw-new').value.trim();
     const nw2=document.getElementById('pw-new2').value.trim();
     const err=document.getElementById('pw-error');
-    const acc=this.getData();if(!acc)return;
+    const acc=await this.getData();if(!acc)return;
     if(acc.pin!==old){err.textContent='旧密码错误';return}
     if(!this.isValid(nw)){err.textContent='新密码需4-10位数字';return}
     if(nw!==nw2){err.textContent='两次密码不一致';return}
-    acc.pin=nw;this.saveData(acc);
+    acc.pin=nw;await this.saveData(acc);
     ['pw-old','pw-new','pw-new2'].forEach(n=>document.getElementById(n).value='');
     err.textContent='';UI.showToast('✅ 密码修改成功','success');
   }
@@ -528,9 +568,9 @@ const Account={
 // TRANSACTION HISTORY (User side)
 // ============================================================================
 const TxHistory={
-  render(){
+  async render(){
     const el=document.getElementById('history-inner');
-    const txs=S.getTransactions().filter(t=>t.accountId===App.currentAccount).reverse();
+    const txs=(await S.getTransactions()).filter(t=>t.account_id===App.currentAccount).reverse();
     if(txs.length===0){el.innerHTML='<div class="empty-state">暂无记录</div>';return}
     el.innerHTML=txs.map(t=>{
       const isR=t.type==='recharge';
@@ -539,7 +579,7 @@ const TxHistory={
       const stLabel=t.status==='pending'?'审核中':t.status==='approved'?'已到账':'已拒绝';
       const stBadge=t.status==='pending'?'badge-orange':t.status==='approved'?'badge-green':'badge-red';
       const amt=isR?`¥${t.amount} → ${t.gold}🪙`:`${t.amount}🪙`;
-      return `<div class="tx-item"><div class="tx-item-left"><div style="font-weight:600">${isR?'💰 充值':'💸 提现'} ${amt}</div><div style="color:var(--text3)">${mName} · ${new Date(t.createdAt).toLocaleString()}</div></div><div class="tx-item-right"><span class="badge ${stBadge}">${stIcon} ${stLabel}</span></div></div>`;
+      return `<div class="tx-item"><div class="tx-item-left"><div style="font-weight:600">${isR?'💰 充值':'💸 提现'} ${amt}</div><div style="color:var(--text3)">${mName} · ${new Date(t.created_at||t.createdAt).toLocaleString()}</div></div><div class="tx-item-right"><span class="badge ${stBadge}">${stIcon} ${stLabel}</span></div></div>`;
     }).join('');
   }
 };
@@ -549,12 +589,12 @@ const TxHistory={
 // ============================================================================
 const Admin={
   refresh(){this.renderDashboard();this.renderReview();this.refreshQR()},
-  renderDashboard(){
-    const accs=S.getAccounts();const txs=S.getTransactions();
+  async renderDashboard(){
+    const accs=await S.getAccounts();const txs=await S.getTransactions();
     const totalUsers=Object.keys(accs).length;
     const pending=txs.filter(t=>t.status==='pending');
     const today=new Date().toDateString();
-    const todayNew=Object.values(accs).filter(a=>new Date(a.createdAt).toDateString()===today).length;
+    const todayNew=Object.values(accs).filter(a=>new Date(a.created_at||a.createdAt).toDateString()===today).length;
     const totalFlow=txs.filter(t=>t.status==='approved').reduce((s,t)=>s+(t.type==='recharge'?t.amount:0),0);
     document.getElementById('dashboard-inner').innerHTML=`
       <div class="admin-stats">
@@ -567,83 +607,86 @@ const Admin={
       <div class="section-title">🔶 待审核 (${pending.length}) ${pending.length>0?'<span style="font-size:11px;color:var(--blue);cursor:pointer" onclick="UI.switchAdminTab(\'review\')">查看全部→</span>':''}</div>
       ${pending.length===0?'<div class="empty-state">暂无待审核</div>':pending.map(t=>{
         const isR=t.type==='recharge';const mName=t.method==='wechat'?'微信':t.method==='alipay'?'支付宝':'银行卡';
-        let extra='';if(!isR){extra=`<div>收款方: ${t.accountInfo||''}${t.bankName?' / '+t.bankName:''}${t.cardHolder?' / '+t.cardHolder:''}</div>`}
-        return `<div class="review-card"><div class="review-card-header"><span class="badge badge-orange">${isR?'💰 充值':'💸 提现'}</span><span style="font-size:11px;color:var(--text3)">${new Date(t.createdAt).toLocaleString()}</span></div><div class="review-card-body"><div>账号: <b>${t.accountId}</b> | ${mName}</div><div>金额: <b style="color:var(--gold)">${isR?'¥'+t.amount+' → '+t.gold+'🪙':t.amount+'🪙'}</b></div>${extra}</div><div class="review-card-actions"><button class="btn btn-sm btn-green" onclick="Admin.approve(${t.id})">✅ 通过</button><button class="btn btn-sm btn-red" onclick="Admin.rejectDialog(${t.id})">❌ 拒绝</button></div></div>`;
+        const info=t.account_info||t.accountInfo||'';const bn=t.bank_name||t.bankName||'';const ch=t.card_holder||t.cardHolder||'';
+        let extra='';if(!isR){extra=`<div>收款方: ${info}${bn?' / '+bn:''}${ch?' / '+ch:''}</div>`}
+        return `<div class="review-card"><div class="review-card-header"><span class="badge badge-orange">${isR?'💰 充值':'💸 提现'}</span><span style="font-size:11px;color:var(--text3)">${new Date(t.created_at||t.createdAt).toLocaleString()}</span></div><div class="review-card-body"><div>账号: <b>${t.account_id||t.accountId}</b> | ${mName}</div><div>金额: <b style="color:var(--gold)">${isR?'¥'+t.amount+' → '+t.gold+'🪙':t.amount+'🪙'}</b></div>${extra}</div><div class="review-card-actions"><button class="btn btn-sm btn-green" onclick="Admin.approve(${t.id})">✅ 通过</button><button class="btn btn-sm btn-red" onclick="Admin.rejectDialog(${t.id})">❌ 拒绝</button></div></div>`;
       }).join('')}
       <div class="divider"></div>
       <div class="section-title">📋 最近已审核</div>
       ${txs.filter(t=>t.status!=='pending').slice(-5).reverse().map(t=>{
         const isR=t.type==='recharge';const st=t.status==='approved'?'✅':'❌';
-        return `<div style="font-size:12px;color:var(--text2);padding:6px 0;border-bottom:1px solid var(--border)">${st} ${isR?'充值':'提现'} | ${t.accountId} | ${isR?'¥'+t.amount:t.amount+'🪙'} | ${new Date(t.reviewedAt||t.createdAt).toLocaleString()}</div>`;
+        return `<div style="font-size:12px;color:var(--text2);padding:6px 0;border-bottom:1px solid var(--border)">${st} ${isR?'充值':'提现'} | ${t.account_id||t.accountId} | ${isR?'¥'+t.amount:t.amount+'🪙'} | ${new Date(t.reviewed_at||t.reviewedAt||t.created_at||t.createdAt).toLocaleString()}</div>`;
       }).join('')||'<div class="empty-state">暂无记录</div>'}`;
   },
 
-  renderReview(){
-    const txs=S.getTransactions();
+  async renderReview(){
+    const txs=await S.getTransactions();
     const pending=txs.filter(t=>t.status==='pending');
     const reviewed=txs.filter(t=>t.status!=='pending').slice(-20).reverse();
     document.getElementById('review-inner').innerHTML=`
       <div class="section-title">🔶 待审核 (${pending.length})</div>
       ${pending.length===0?'<div class="empty-state">暂无待审核</div>':pending.map(t=>{
         const isR=t.type==='recharge';const mName=t.method==='wechat'?'微信':t.method==='alipay'?'支付宝':'银行卡';
-        let extra='';if(!isR){extra=`<div>收款方: ${t.accountInfo}${t.bankName?' / '+t.bankName:''}${t.cardHolder?' / '+t.cardHolder:''}</div>`}
-        return `<div class="review-card"><div class="review-card-header"><span class="badge badge-orange">${isR?'💰 充值':'💸 提现'}</span><span style="font-size:11px;color:var(--text3)">${new Date(t.createdAt).toLocaleString()}</span></div><div class="review-card-body"><div>账号: <b>${t.accountId}</b> | ${mName}</div><div>金额: <b style="color:var(--gold)">${isR?'¥'+t.amount+' → '+t.gold+'🪙':t.amount+'🪙'}</b></div>${extra}</div><div class="review-card-actions"><button class="btn btn-sm btn-green" onclick="Admin.approve(${t.id})">✅ 通过</button><button class="btn btn-sm btn-red" onclick="Admin.rejectDialog(${t.id})">❌ 拒绝</button></div></div>`;
+        const info=t.account_info||'';const bn=t.bank_name||'';const ch=t.card_holder||'';
+        let extra='';if(!isR){extra=`<div>收款方: ${info}${bn?' / '+bn:''}${ch?' / '+ch:''}</div>`}
+        return `<div class="review-card"><div class="review-card-header"><span class="badge badge-orange">${isR?'💰 充值':'💸 提现'}</span><span style="font-size:11px;color:var(--text3)">${new Date(t.created_at).toLocaleString()}</span></div><div class="review-card-body"><div>账号: <b>${t.account_id}</b> | ${mName}</div><div>金额: <b style="color:var(--gold)">${isR?'¥'+t.amount+' → '+t.gold+'🪙':t.amount+'🪙'}</b></div>${extra}</div><div class="review-card-actions"><button class="btn btn-sm btn-green" onclick="Admin.approve(${t.id})">✅ 通过</button><button class="btn btn-sm btn-red" onclick="Admin.rejectDialog(${t.id})">❌ 拒绝</button></div></div>`;
       }).join('')}
       <div class="divider"></div><div class="section-title">📝 已审核</div>
       ${reviewed.length===0?'<div class="empty-state">暂无记录</div>':reviewed.map(t=>{
         const st=t.status==='approved'?'✅':'❌';
-        return `<div style="font-size:12px;color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><span>${st} ${t.type==='recharge'?'充值':'提现'} | ${t.accountId} | ${t.type==='recharge'?'¥'+t.amount:t.amount+'🪙'}</span><span style="font-size:11px">${new Date(t.reviewedAt||t.createdAt).toLocaleString()}</span></div>`;
+        return `<div style="font-size:12px;color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><span>${st} ${t.type==='recharge'?'充值':'提现'} | ${t.account_id} | ${t.type==='recharge'?'¥'+t.amount:t.amount+'🪙'}</span><span style="font-size:11px">${new Date(t.reviewed_at||t.created_at).toLocaleString()}</span></div>`;
       }).join('')}`;
   },
 
-  renderUsers(){
-    const accs=S.getAccounts();
-    const list=Object.entries(accs).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  async renderUsers(){
+    const accs=await S.getAccounts();
+    const list=Object.entries(accs).sort((a,b)=>new Date(b[1].created_at||b[1].createdAt||0)-new Date(a[1].created_at||a[1].createdAt||0));
     document.getElementById('users-inner').innerHTML=`
       <div class="section-title">👥 用户列表 (${list.length})</div>
-      ${list.map(([id,a])=>`<div class="user-row"><div><div style="font-weight:600">${id}</div><div style="font-size:11px;color:var(--text3)">注册: ${new Date(a.createdAt).toLocaleDateString()}</div></div><div style="text-align:right"><div style="color:var(--gold);font-weight:600">${a.gold||0} 🪙</div><div style="font-size:11px;color:var(--text3)">${a.stats.totalGames||0}局 · 完美率${a.stats.totalGames?Math.round((a.stats.perfects||0)/a.stats.totalGames*100):0}%</div></div></div>`).join('')}`;
+      ${list.map(([id,a])=>`<div class="user-row"><div><div style="font-weight:600">${id}</div><div style="font-size:11px;color:var(--text3)">注册: ${new Date(a.created_at||a.createdAt).toLocaleDateString()}</div></div><div style="text-align:right"><div style="color:var(--gold);font-weight:600">${a.gold||0} 🪙</div><div style="font-size:11px;color:var(--text3)">${a.stats&&a.stats.totalGames||0}局 · 完美率${a.stats&&a.stats.totalGames?Math.round((a.stats.perfects||0)/a.stats.totalGames*100):0}%</div></div></div>`).join('')}`;
   },
 
-  renderTransactions(){
-    const txs=S.getTransactions().slice(-50).reverse();
+  async renderTransactions(){
+    const txs=(await S.getTransactions()).slice(-50).reverse();
     document.getElementById('transactions-inner').innerHTML=`
       <div class="section-title">📝 全部流水 (最近50条)</div>
       ${txs.length===0?'<div class="empty-state">暂无记录</div>':txs.map(t=>{
         const isR=t.type==='recharge';const st=t.status==='pending'?'🔶':t.status==='approved'?'✅':'❌';
-        return `<div style="font-size:12px;color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><span>${st} ${isR?'充值':'提现'} | ${t.accountId} | ${isR?'¥'+t.amount:t.amount+'🪙'}</span><span style="font-size:11px">${new Date(t.createdAt).toLocaleString()}</span></div>`;
+        return `<div style="font-size:12px;color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><span>${st} ${isR?'充值':'提现'} | ${t.account_id} | ${isR?'¥'+t.amount:t.amount+'🪙'}</span><span style="font-size:11px">${new Date(t.created_at).toLocaleString()}</span></div>`;
       }).join('')}`;
   },
 
-  approve(id){
-    const tx=S.getTransactions().find(t=>t.id===id);if(!tx)return;
-    S.updateTransaction(id,{status:'approved',reviewedAt:Date.now(),reviewedBy:App.currentAccount});
-    const acc=S.getAccount(tx.accountId);
+  async approve(id){
+    const txs=await S.getTransactions();const tx=txs.find(t=>t.id===id);if(!tx)return;
+    await S.updateTransaction(id,{status:'approved',reviewed_at:new Date().toISOString(),reviewed_by:App.currentAccount});
+    const acc=await S.getAccount(tx.account_id);
     if(acc){
       if(tx.type==='recharge'){acc.gold=(acc.gold||0)+tx.gold}
       else{acc.gold=(acc.gold||0)-tx.amount}
-      S.saveAccount(tx.accountId,acc);
+      await S.saveAccount(tx.account_id,acc);
     }
     this.renderReview();this.renderDashboard();
     UI.showToast('✅ 已通过','success');
   },
 
-  rejectDialog(id){
-    const tx=S.getTransactions().find(t=>t.id===id);if(!tx)return;
+  async rejectDialog(id){
+    const txs=await S.getTransactions();const tx=txs.find(t=>t.id===id);if(!tx)return;
     document.getElementById('review-reject-box').innerHTML=`
-      <div class="modal-title">❌ 确认拒绝</div><div class="modal-sub">拒绝 ${tx.type==='recharge'?'充值':'提现'} ${tx.type==='recharge'?'¥'+tx.amount:tx.amount+'🪙'}<br>账号: ${tx.accountId}</div>
+      <div class="modal-title">❌ 确认拒绝</div><div class="modal-sub">拒绝 ${tx.type==='recharge'?'充值':'提现'} ${tx.type==='recharge'?'¥'+tx.amount:tx.amount+'🪙'}<br>账号: ${tx.account_id}</div>
       <div class="modal-btns"><button class="btn btn-red" onclick="Admin.reject(${id})">确认拒绝</button><button class="btn btn-sm btn-outline" onclick="UI.hideModal('modal-review-reject')">取消</button></div>`;
     UI.showModal('modal-review-reject');
   },
 
-  reject(id){
-    S.updateTransaction(id,{status:'rejected',reviewedAt:Date.now(),reviewedBy:App.currentAccount});
+  async reject(id){
+    await S.updateTransaction(id,{status:'rejected',reviewed_at:new Date().toISOString(),reviewed_by:App.currentAccount});
     UI.hideModal('modal-review-reject');this.renderReview();this.renderDashboard();
     UI.showToast('已拒绝','error');
   },
 
   refreshQR(){
-    ['wechat','alipay'].forEach(m=>{
-      const qr=S.getMeta().qrCodes&&S.getMeta().qrCodes[m];
+    ['wechat','alipay'].forEach(async m=>{
+      const meta=await S.getMeta();
+      const qr=meta.qrCodes&&meta.qrCodes[m];
       const preview=document.getElementById(m+'-preview');
       const img=document.getElementById(m+'-preview-img');
       const icon=document.getElementById(m+'-upload-icon');
@@ -663,9 +706,9 @@ const Admin={
       else Admin._saveQR(method,base64);
     };reader.readAsDataURL(file);
   },
-  _saveQR(method,base64){const meta=S.getMeta();if(!meta.qrCodes)meta.qrCodes={};meta.qrCodes[method]=base64;S.saveMeta(meta);this.refreshQR();UI.showToast('✅ 收款码已保存','success')},
-  clearQR(method){const meta=S.getMeta();if(meta.qrCodes)delete meta.qrCodes[method];S.saveMeta(meta);this.refreshQR();UI.showToast('已清除收款码')},
-  getQR(method){const meta=S.getMeta();return(meta.qrCodes&&meta.qrCodes[method])||null},
+  _saveQR(method,base64){S.saveMetaKey(method,base64);this.refreshQR();UI.showToast('✅ 收款码已保存','success')},
+  async clearQR(method){await S.deleteMetaKey(method);this.refreshQR();UI.showToast('已清除收款码')},
+  async getQR(method){const meta=await S.getMeta();return(meta.qrCodes&&meta.qrCodes[method])||null},
 
   changePassword(){
     const nw=document.getElementById('admin-new-pw').value.trim();
@@ -684,7 +727,7 @@ const Recharge={
   selectTier(amt){this.amount=amt;document.querySelectorAll('#recharge-tiers .recharge-tier').forEach(el=>el.classList.toggle('active',parseInt(el.dataset.amount)===amt));this.updateBtn()},
   updateBtn(){const btn=document.getElementById('btn-recharge');if(this.amount>0){const gold=this.amount>=100?Math.floor(this.amount*1.5):this.amount;btn.textContent='💳 充值 ¥'+this.amount+' → +'+gold+'🪙';btn.disabled=false}else{btn.textContent='请选择金额和支付方式';btn.disabled=true}},
 
-  showQR(){
+  async showQR(){
     if(!this.amount)return;
     const gold=this.amount>=100?Math.floor(this.amount*1.5):this.amount;
     const mName=this.method==='wechat'?'微信':'支付宝';
@@ -695,16 +738,16 @@ const Recharge={
     const placeholder=document.getElementById('qr-placeholder');
     const existingImg=qrDisplay.querySelector('img');if(existingImg)existingImg.remove();
     placeholder.style.display='none';
-    const qrImg=Admin.getQR(this.method);
+    const qrImg=await Admin.getQR(this.method);
     if(qrImg){const img=document.createElement('img');img.src=qrImg;img.alt=mName+'收款码';img.style.width='100%';img.style.height='100%';img.style.objectFit='contain';qrDisplay.appendChild(img)}
     else{placeholder.style.display='';placeholder.querySelector('.qr-placeholder-icon').textContent='📷';placeholder.querySelector('div:last-child').textContent=mName+'收款码\n未上传'}
     UI.showModal('modal-qr');
   },
 
-  submit(){
+  async submit(){
     const gold=this.amount>=100?Math.floor(this.amount*1.5):this.amount;
     UI.hideModal('modal-qr');
-    S.addTransaction({id:Date.now(),type:'recharge',accountId:App.currentAccount,amount:this.amount,gold,method:this.method,status:'pending',createdAt:Date.now(),reviewedAt:null,reviewedBy:null,notified:false});
+    await S.addTransaction({id:Date.now(),type:'recharge',accountId:App.currentAccount,amount:this.amount,gold,method:this.method,status:'pending',created_at:new Date().toISOString(),reviewed_at:null,reviewed_by:null,notified:false});
     UI.showModal('modal-submitted');
   }
 };
@@ -722,22 +765,22 @@ const Withdraw={
     else c.innerHTML='<div><label class="input-label">持卡人姓名</label><input class="input" id="wd-bank-name" type="text" placeholder="请输入姓名" style="text-align:left;letter-spacing:0"></div><div><label class="input-label">银行卡号</label><input class="input" id="wd-bank-card" type="text" inputmode="numeric" placeholder="请输入银行卡号" style="text-align:left;letter-spacing:0"></div><div><label class="input-label">开户银行</label><input class="input" id="wd-bank-bank" type="text" placeholder="如：中国工商银行" style="text-align:left;letter-spacing:0"></div>';
   },
 
-  refresh(){const acc=Account.getData();document.getElementById('withdraw-balance').textContent=acc?acc.gold:0;this.renderFields();this.renderRecords()},
+  async refresh(){const acc=await Account.getData();document.getElementById('withdraw-balance').textContent=acc?acc.gold:0;this.renderFields();this.renderRecords()},
 
-  renderRecords(){
-    const txs=S.getTransactions().filter(t=>t.accountId===App.currentAccount&&t.type==='withdraw').reverse();
+  async renderRecords(){
+    const txs=(await S.getTransactions()).filter(t=>t.account_id===App.currentAccount&&t.type==='withdraw').reverse();
     const c=document.getElementById('withdraw-records');
     if(txs.length===0){c.innerHTML='';return}
     c.innerHTML='<div style="font-size:13px;font-weight:600;color:var(--text2);margin-top:8px">提现记录</div>'+txs.map(t=>{
       const mName=t.method==='wechat'?'微信':t.method==='alipay'?'支付宝':'银行卡';
       const stIcon=t.status==='pending'?'🔶':t.status==='approved'?'✅':'❌';
       const stLabel=t.status==='pending'?'审核中':t.status==='approved'?'已到账':'已拒绝';
-      return `<div class="tx-item"><div class="tx-item-left"><div style="font-weight:600">-${t.amount}🪙 → ${mName}</div><div style="color:var(--text3);font-size:11px">${new Date(t.createdAt).toLocaleString()}</div></div><span class="badge ${t.status==='pending'?'badge-orange':t.status==='approved'?'badge-green':'badge-red'}">${stIcon} ${stLabel}</span></div>`;
+      return `<div class="tx-item"><div class="tx-item-left"><div style="font-weight:600">-${t.amount}🪙 → ${mName}</div><div style="color:var(--text3);font-size:11px">${new Date(t.created_at).toLocaleString()}</div></div><span class="badge ${t.status==='pending'?'badge-orange':t.status==='approved'?'badge-green':'badge-red'}">${stIcon} ${stLabel}</span></div>`;
     }).join('');
   },
 
-  submit(){
-    const acc=Account.getData();if(!acc)return;
+  async submit(){
+    const acc=await Account.getData();if(!acc)return;
     const amt=parseInt(document.getElementById('withdraw-amount').value);
     if(!amt||amt<100){UI.showToast('提现金额最低100🪙','error');return}
     if(amt>acc.gold){UI.showToast('余额不足','error');return}
@@ -746,9 +789,9 @@ const Withdraw={
     else if(this.method==='alipay'){accountInfo=document.getElementById('wd-alipay-id')?.value.trim()||'';if(!accountInfo){UI.showToast('请输入支付宝账号','error');return}}
     else{cardHolder=document.getElementById('wd-bank-name')?.value.trim()||'';accountInfo=document.getElementById('wd-bank-card')?.value.trim()||'';bankName=document.getElementById('wd-bank-bank')?.value.trim()||'';if(!cardHolder){UI.showToast('请输入持卡人姓名','error');return}if(!accountInfo||accountInfo.length<10){UI.showToast('请输入正确的银行卡号','error');return}if(!bankName){UI.showToast('请输入开户银行','error');return}}
 
-    S.addTransaction({id:Date.now(),type:'withdraw',accountId:App.currentAccount,amount:amt,gold:amt,method:this.method,accountInfo,bankName,cardHolder,status:'pending',createdAt:Date.now(),reviewedAt:null,reviewedBy:null,notified:false});
+    await S.addTransaction({id:Date.now(),type:'withdraw',accountId:App.currentAccount,amount:amt,gold:amt,method:this.method,accountInfo,bankName,cardHolder,status:'pending',created_at:new Date().toISOString(),reviewed_at:null,reviewed_by:null,notified:false});
     document.getElementById('withdraw-amount').value='';
-    this.refresh();
+    await this.refresh();
     UI.showModal('modal-submitted');
   }
 };
@@ -790,11 +833,11 @@ const Game={
   state:'idle',targetFloor:0,targetSubGrid:0,targetGrid:0,elevatorGrid:0,speed:0,animId:null,lastTime:0,cameraGrid:0,stopped:false,combo:0,
   canvas:null,ctx:null,canvasW:0,canvasH:0,floorH:0,gridH:0,_font:'',
 
-  start(){
+  async start(){
     if(this.state==='rising'||this.state==='stopping')return;
-    const acc=Account.getData();if(!acc)return;
+    const acc=await Account.getData();if(!acc)return;
     if(acc.gold<this.COST){UI.showModal('modal-insufficient');return}
-    acc.gold-=this.COST;acc.stats.totalSpent=(acc.stats.totalSpent||0)+this.COST;Account.saveData(acc);
+    acc.gold-=this.COST;acc.stats.totalSpent=(acc.stats.totalSpent||0)+this.COST;await Account.saveData(acc);
     this.targetFloor=this.randInt(Game.TARGET_MIN,Game.MAX_FLOOR);
     this.targetSubGrid=this.randInt(0,Game.GRIDS_PER_FLOOR-1);
     this.targetGrid=(this.targetFloor-1)*Game.GRIDS_PER_FLOOR+this.targetSubGrid;
@@ -819,19 +862,19 @@ const Game={
     // Event handled by permanent listener on canvas-wrap (see init)
   },
 
-  stopElevator(){
+  async stopElevator(){
     if(this.stopped)return;this.stopped=true;this.state='stopping';
     const stoppedGrid=Math.round(this.elevatorGrid);const diff=Math.abs(stoppedGrid-this.targetGrid);
     let reward=0,type='';if(diff===0){reward=50;type='perfect'}else if(diff===1){reward=20;type='good'}else if(diff===2){reward=5;type='ok'}else{reward=0;type='fail'}
     if(type==='perfect')this.combo++;else this.combo=0;
     let bonus=0,title=null;
     if(this.combo>0&&this.combo%3===0&&type==='perfect'){if(this.combo===3){title='电梯大师';bonus=30}else if(this.combo===6){title='电梯之神';bonus=60}else if(this.combo===9){title='电梯传说';bonus=90}else{title='电梯至尊';bonus=this.combo*10}}
-    const acc=Account.getData();acc.gold+=reward+bonus;acc.stats.totalGames=(acc.stats.totalGames||0)+1;
+    const acc=await Account.getData();acc.gold+=reward+bonus;acc.stats.totalGames=(acc.stats.totalGames||0)+1;
     if(type==='perfect')acc.stats.perfects=(acc.stats.perfects||0)+1;
     if(this.combo>acc.stats.bestCombo)acc.stats.bestCombo=this.combo;
     acc.stats.totalEarned=(acc.stats.totalEarned||0)+reward+bonus;acc.currentCombo=this.combo;
     if(title&&!acc.stats.titles.includes(title))acc.stats.titles.push(title);
-    Account.saveData(acc);
+    await Account.saveData(acc);
     const stoppedFloor=stoppedGrid/this.GRIDS_PER_FLOOR+1;
     document.getElementById('hud-current').textContent=stoppedFloor.toFixed(2)+'F';
     document.getElementById('hud-gold').textContent=acc.gold;
