@@ -512,6 +512,7 @@ const Account={
     }catch(e){err.textContent='注册失败：'+e.message;return}
     S.setLast(id);['reg-account','reg-pin','reg-pin2'].forEach(n=>document.getElementById(n).value='');
     err.textContent='';App.currentAccount=id;App.isAdmin=false;
+    this.startPolling();
     UI.showToast('🎉 注册成功！赠送10金币','success');
     // Direct screen switch without animation
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -540,6 +541,7 @@ const Account={
       document.getElementById('login-account').value='';document.getElementById('login-pin').value='';
       err.textContent='';App.currentAccount=id;App.isAdmin=false;S.setLast(id);
       await this.checkApproved(acc);
+      this.startPolling();
       UI.showScreen('lobby');
     }catch(e){err.textContent='登录失败，请检查网络';}
   },
@@ -557,11 +559,23 @@ const Account={
         acc.gold=(acc.gold||0)+addedGold;
         await this.saveData(acc);
         UI.showToast(`✅ ${txs.length}笔审核通过！\n金币 +${addedGold} 🪙`,'success');
+        UI.updateLobby();UI.updateProfileGold();
       }
     }
   },
 
-  logout(){App.currentAccount=null;App.isAdmin=false;S.setLast(null);UI.showToast('已退出登录');UI.showScreen('login')},
+  // Poll for approved transactions every 5s while logged in
+  startPolling(){
+    if(this._polling)return;
+    this._polling=setInterval(async()=>{
+      if(!App.currentAccount||App.isAdmin||App.currentScreen==='login'||App.currentScreen==='register')return;
+      const acc=await this.getData();if(!acc)return;
+      await this.checkApproved(acc);
+    },5000);
+  },
+  stopPolling(){if(this._polling){clearInterval(this._polling);this._polling=null}},
+
+  logout(){App.currentAccount=null;App.isAdmin=false;S.setLast(null);this.stopPolling();UI.showToast('已退出登录');UI.showScreen('login')},
   async getData(){return App.currentAccount?await S.getAccount(App.currentAccount):null},
   async saveData(d){if(App.currentAccount)await S.saveAccount(App.currentAccount,d)},
   async addGold(amt){const acc=await this.getData();if(!acc)return;acc.gold=(acc.gold||0)+amt;await this.saveData(acc)},
