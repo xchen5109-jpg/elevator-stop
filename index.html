@@ -501,12 +501,17 @@ const Account={
     if(!this.isValid(pin)){err.textContent='密码需4-10位数字';return}
     if(pin!==pin2){err.textContent='两次密码不一致';return}
     try{
-      if(await S.getAccount(id)){err.textContent='该账号已存在';return}
-      await S.saveAccount(id,{pin,gold:10,stats:{totalGames:0,perfects:0,bestCombo:0,titles:[],totalEarned:0,totalSpent:0},current_combo:0,created_at:new Date().toISOString()});
-    }catch(e){err.textContent='注册失败，请检查网络';console.error(e);return}
+      const exists=await S.getAccount(id);
+      if(exists){err.textContent='该账号已存在';return}
+      await sfetch('accounts',{method:'POST',body:JSON.stringify({id,pin,gold:10,stats:{totalGames:0,perfects:0,bestCombo:0,titles:[],totalEarned:0,totalSpent:0},current_combo:0}),headers:{'Prefer':'return=minimal'}});
+    }catch(e){err.textContent='注册失败：'+e.message;return}
     S.setLast(id);['reg-account','reg-pin','reg-pin2'].forEach(n=>document.getElementById(n).value='');
     err.textContent='';App.currentAccount=id;App.isAdmin=false;
-    UI.showToast('🎉 注册成功！赠送10金币','success');UI.showScreen('lobby');
+    UI.showToast('🎉 注册成功！赠送10金币','success');
+    // Direct screen switch without animation
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.getElementById('screen-lobby').classList.add('active');
+    this.updateLobby();
   },
 
   async login(){
