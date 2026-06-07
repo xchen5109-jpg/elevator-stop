@@ -70,6 +70,12 @@ body{display:flex;justify-content:center;align-items:center}
 .lobby-btn-text{font-size:13px;font-weight:600}
 .lobby-btn-sub{font-size:11px;color:var(--text3)}
 .btn-start{width:100%;padding:18px;font-size:17px;font-weight:700;background:linear-gradient(135deg,var(--blue),#5B4DFF);box-shadow:0 6px 25px rgba(59,124,255,.35)}
+.bet-chip{padding:8px 10px;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;text-align:center;border:2px solid var(--border);background:var(--card);color:var(--text);transition:all .15s;min-width:50px}
+.bet-chip small{display:block;font-size:9px;color:var(--gold);margin-top:1px;font-weight:400}
+.bet-chip.active{border-color:var(--blue);background:rgba(59,124,255,.12);color:var(--blue)}
+.bet-chip.hot{border-color:var(--red);background:rgba(255,61,87,.08)}
+.bet-chip.hot.active{border-color:var(--red);background:rgba(255,61,87,.15);color:var(--red);box-shadow:0 0 12px rgba(255,61,87,.3)}
+.bet-chip.hot small{color:var(--red)}
 
 /* Game */
 #screen-game{padding:0;background:#000}
@@ -215,7 +221,15 @@ body{display:flex;justify-content:center;align-items:center}
 <div class="lobby-wrap">
 <div class="lobby-top"><div class="lobby-account">👤 账号 <span id="lobby-account">------</span></div><div></div></div>
 <div class="gold-hero"><div class="gold-hero-label">🪙 我的金币</div><div class="gold-hero-num" id="lobby-gold">0</div><div class="gold-hero-cny">≈ ¥<span id="lobby-cny">0.00</span></div></div>
-<button class="btn btn-start" onclick="Game.start()">🎯 开始游戏 <small style="font-weight:400;opacity:.7">-10🪙</small></button>
+<button class="btn btn-start" onclick="Game.start()" id="btn-start-game">🎯 开始游戏 · 押5🪙 赢15🪙</button>
+	<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center" id="bet-selector">
+	  <div class="bet-chip active" data-bet="5" onclick="Game.selectBet(5)">5🪙<small>+15</small></div>
+	  <div class="bet-chip" data-bet="10" onclick="Game.selectBet(10)">10🪙<small>+40</small></div>
+	  <div class="bet-chip" data-bet="20" onclick="Game.selectBet(20)">20🪙<small>+100</small></div>
+	  <div class="bet-chip" data-bet="50" onclick="Game.selectBet(50)">50🪙<small>+300</small></div>
+	  <div class="bet-chip" data-bet="100" onclick="Game.selectBet(100)">100🪙<small>+800</small></div>
+	  <div class="bet-chip hot" data-bet="200" onclick="Game.selectBet(200)">200🪙<small>+2000</small></div>
+	</div>
 <div class="lobby-grid">
 <div class="lobby-btn" onclick="UI.showProfile('wallet')"><div class="lobby-btn-icon">💰</div><div class="lobby-btn-text">充值</div></div>
 <div class="lobby-btn" onclick="UI.showProfile('withdraw')"><div class="lobby-btn-icon">💸</div><div class="lobby-btn-text">提现</div></div>
@@ -866,19 +880,38 @@ const CS={
 // GAME ENGINE (unchanged core from v2)
 // ============================================================================
 const Game={
-  VISIBLE_FLOORS:10,MAX_FLOOR:18,TARGET_MIN:3,GRIDS_PER_FLOOR:5,COST:10,
-  state:'idle',targetFloor:0,targetSubGrid:0,targetGrid:0,elevatorGrid:0,speed:0,animId:null,lastTime:0,cameraGrid:0,stopped:false,combo:0,
+  VISIBLE_FLOORS:10,MAX_FLOOR:18,TARGET_MIN:3,
+  currentBet:5,
+  // Bet config: grids per floor, reward tiers, fail threshold
+  BET:{
+    5:  {grids:5,  perf:15,  good:5,   ok:2,  failAt:3},
+    10: {grids:6,  perf:40,  good:12,  ok:4,  failAt:3},
+    20: {grids:8,  perf:100, good:30,  ok:10, failAt:3},
+    50: {grids:10, perf:300, good:90,  ok:30, failAt:2},
+    100:{grids:12, perf:800, good:240, ok:0,  failAt:2},
+    200:{grids:15, perf:2000,good:0,   ok:0,  failAt:1},
+  },
+  state:'idle',targetFloor:0,targetSubGrid:0,targetGrid:0,elevatorGrid:0,speed:0,animId:null,lastTime:0,cameraGrid:0,stopped:false,combo:0,gridsPerFloor:5,
   canvas:null,ctx:null,canvasW:0,canvasH:0,floorH:0,gridH:0,_font:'',
+
+  selectBet(amount){
+    this.currentBet=amount;
+    document.querySelectorAll('.bet-chip').forEach(c=>c.classList.toggle('active',parseInt(c.dataset.bet)===amount));
+    const cfg=this.BET[amount];
+    document.getElementById('btn-start-game').textContent='🎯 开始游戏 · 押'+amount+'🪙 赢'+cfg.perf+'🪙';
+  },
 
   async start(){
     if(this.state==='rising'||this.state==='stopping')return;
+    const bet=this.currentBet;
     const acc=await Account.getData();if(!acc)return;
-    if(acc.gold<this.COST){UI.showModal('modal-insufficient');return}
-    acc.gold-=this.COST;acc.stats.totalSpent=(acc.stats.totalSpent||0)+this.COST;await Account.saveData(acc);
+    if(acc.gold<bet){UI.showModal('modal-insufficient');return}
+    acc.gold-=bet;acc.stats.totalSpent=(acc.stats.totalSpent||0)+bet;await Account.saveData(acc);
+    this.gridsPerFloor=this.BET[bet].grids;
     this.targetFloor=this.randInt(Game.TARGET_MIN,Game.MAX_FLOOR);
-    this.targetSubGrid=this.randInt(0,Game.GRIDS_PER_FLOOR-1);
-    this.targetGrid=(this.targetFloor-1)*Game.GRIDS_PER_FLOOR+this.targetSubGrid;
-    const base=12;this.speed=base*(1+(this.targetFloor-3)*0.06);
+    this.targetSubGrid=this.randInt(0,this.gridsPerFloor-1);
+    this.targetGrid=(this.targetFloor-1)*this.gridsPerFloor+this.targetSubGrid;
+    const base=12;this.speed=base*(1+(this.targetFloor-3)*0.06)*(1+(bet/200)*0.3);
     this.elevatorGrid=0;this.cameraGrid=-2;this.stopped=false;this.state='rising';this.combo=(acc.current_combo||0);
     document.getElementById('hud-target').textContent=this.targetFloor+'F';
     document.getElementById('hud-current').textContent='1.0F';
@@ -894,38 +927,53 @@ const Game={
     this.canvas.width=this.canvasW*dpr;this.canvas.height=this.canvasH*dpr;
     this.canvas.style.width=this.canvasW+'px';this.canvas.style.height=this.canvasH+'px';
     this.ctx=this.canvas.getContext('2d');this.ctx.scale(dpr,dpr);
-    this.floorH=this.canvasH/this.VISIBLE_FLOORS;this.gridH=this.floorH/this.GRIDS_PER_FLOOR;
+    this.floorH=this.canvasH/this.VISIBLE_FLOORS;this.gridH=this.floorH/this.gridsPerFloor;
     this._font=getComputedStyle(document.body).fontFamily;
     // Event handled by permanent listener on canvas-wrap (see init)
   },
 
   async stopElevator(){
     if(this.stopped)return;this.stopped=true;this.state='stopping';
+    const cfg=this.BET[this.currentBet];
     const stoppedGrid=Math.round(this.elevatorGrid);const diff=Math.abs(stoppedGrid-this.targetGrid);
-    let reward=0,type='';if(diff===0){reward=50;type='perfect'}else if(diff===1){reward=20;type='good'}else if(diff===2){reward=5;type='ok'}else{reward=0;type='fail'}
+    let reward=0,type='';
+    if(diff===0){reward=cfg.perf;type='perfect'}
+    else if(diff===1){reward=cfg.good;type='good'}
+    else if(diff===2){reward=cfg.ok;type='ok'}
+    else{reward=0;type='fail'}
+    // Apply fail threshold
+    if(diff>=cfg.failAt){reward=0;type='fail'}
     if(type==='perfect')this.combo++;else this.combo=0;
     let bonus=0,title=null;
-    if(this.combo>0&&this.combo%3===0&&type==='perfect'){if(this.combo===3){title='电梯大师';bonus=30}else if(this.combo===6){title='电梯之神';bonus=60}else if(this.combo===9){title='电梯传说';bonus=90}else{title='电梯至尊';bonus=this.combo*10}}
+    const bet=this.currentBet;
+    if(this.combo>0&&this.combo%3===0&&type==='perfect'){if(this.combo===3){title='电梯大师';bonus=bet*3}else if(this.combo===6){title='电梯之神';bonus=bet*6}else if(this.combo===9){title='电梯传说';bonus=bet*9}else{title='电梯至尊';bonus=this.combo*bet}}
     const acc=await Account.getData();acc.gold+=reward+bonus;acc.stats.totalGames=(acc.stats.totalGames||0)+1;
     if(type==='perfect')acc.stats.perfects=(acc.stats.perfects||0)+1;
     if(this.combo>acc.stats.bestCombo)acc.stats.bestCombo=this.combo;
     acc.stats.totalEarned=(acc.stats.totalEarned||0)+reward+bonus;acc.current_combo=this.combo;
     if(title&&!acc.stats.titles.includes(title))acc.stats.titles.push(title);
     await Account.saveData(acc);
-    const stoppedFloor=stoppedGrid/this.GRIDS_PER_FLOOR+1;
+    const stoppedFloor=stoppedGrid/this.gridsPerFloor+1;
     document.getElementById('hud-current').textContent=stoppedFloor.toFixed(2)+'F';
     document.getElementById('hud-gold').textContent=acc.gold;
     document.getElementById('hud-combo').textContent='x'+this.combo;
     document.getElementById('game-hint').style.display='none';
     const carSY=this.canvasH-(this.elevatorGrid-this.cameraGrid)*this.gridH;
-    UI.floatScore(this.canvasW/2,carSY-20,type==='perfect'?'🎯+50':'+'+reward,type==='perfect'?'#F0B90B':type==='good'?'#00C853':type==='ok'?'#FF9100':'#FF3D57');
+    const rtext=type==='perfect'?'🎯+'+reward:(reward>0?'+'+reward:'💥 失败');
+    UI.floatScore(this.canvasW/2,carSY-20,rtext,type==='perfect'?'#F0B90B':type==='good'?'#00C853':type==='ok'?'#FF9100':'#FF3D57');
     if(type==='perfect'&&navigator.vibrate)navigator.vibrate([20,40,20]);
     setTimeout(()=>this.showResult(type,reward,bonus,title,stoppedFloor),350);
   },
 
   showResult(type,reward,bonus,title,stoppedFloor){
-    this.state='result';let icon='',css='';if(type==='perfect'){icon='🎯';css='perfect'}else if(type==='good'){icon='👍';css='good'}else if(type==='ok'){icon='👌';css='ok'}else{icon='💥';css='fail'}
-    document.getElementById('result-box').innerHTML=`<div style="font-size:48px;margin-bottom:4px">${icon}</div><div class="modal-score ${css}">+${reward}</div><div style="font-size:14px;color:var(--text2)">停在 ${stoppedFloor.toFixed(1)}F · 目标 ${this.targetFloor}F</div>${bonus>0?`<div style="color:var(--gold);font-weight:600;margin-top:4px">🔥 连击奖励 +${bonus} 🪙</div>`:''}${title?`<div class="title-badge">🏆 获得称号：${title}</div>`:''}<div class="modal-btns"><button class="btn" onclick="UI.hideModal('modal-result');Game.playAgain()">🔄 再来一局 <small style="opacity:.7">-10🪙</small></button><button class="btn btn-sm btn-outline" onclick="UI.hideModal('modal-result');UI.showScreen('lobby')">返回大厅</button></div>`;
+    this.state='result';let icon='',css='';
+    if(type==='perfect'){icon='🎯';css='perfect'}
+    else if(type==='good'){icon='👍';css='good'}
+    else if(type==='ok'){icon='👌';css='ok'}
+    else{icon='💥';css='fail'}
+    const bet=this.currentBet;
+    const acc=Account.getData();
+    document.getElementById('result-box').innerHTML=`<div style="font-size:48px;margin-bottom:4px">${icon}</div><div class="modal-score ${css}">${type==='fail'?'+0':('+'+reward)}</div><div style="font-size:14px;color:var(--text2)">押${bet}🪙 | 停在 ${stoppedFloor.toFixed(1)}F | 目标 ${this.targetFloor}F</div>${bonus>0?`<div style="color:var(--gold);font-weight:600;margin-top:4px">🔥 连击奖励 +${bonus} 🪙</div>`:''}${title?`<div class="title-badge">🏆 获得称号：${title}</div>`:''}<div class="modal-btns"><button class="btn" onclick="UI.hideModal('modal-result');Game.playAgain()">🔄 再来一局 · 押${bet}🪙</button><button class="btn btn-sm btn-outline" onclick="UI.hideModal('modal-result');UI.showScreen('lobby')">返回大厅</button></div>`;
     UI.showModal('modal-result');
   },
 
@@ -936,11 +984,11 @@ const Game={
     const dt=Math.min((ts-this.lastTime)/1000,.1);this.lastTime=ts;
     if(this.state==='rising'){
       this.elevatorGrid+=this.speed*dt;
-      const maxGrid=(this.MAX_FLOOR-1)*this.GRIDS_PER_FLOOR+this.GRIDS_PER_FLOOR-1;
+      const maxGrid=(this.MAX_FLOOR-1)*this.gridsPerFloor+this.gridsPerFloor-1;
       if(this.elevatorGrid>=maxGrid&&!this.stopped)this.stopElevator();
     }
-    const vpGrids=this.VISIBLE_FLOORS*this.GRIDS_PER_FLOOR;let tc=this.elevatorGrid-vpGrids*.32;const pad=2;tc=Math.max(-pad,tc);const maxCam=(this.MAX_FLOOR-1)*this.GRIDS_PER_FLOOR+this.GRIDS_PER_FLOOR-vpGrids+pad;tc=Math.min(tc,maxCam);this.cameraGrid+=(tc-this.cameraGrid)*.12;
-    document.getElementById('hud-current').textContent=(this.elevatorGrid/this.GRIDS_PER_FLOOR+1).toFixed(2)+'F';
+    const vpGrids=this.VISIBLE_FLOORS*this.gridsPerFloor;let tc=this.elevatorGrid-vpGrids*.32;const pad=2;tc=Math.max(-pad,tc);const maxCam=(this.MAX_FLOOR-1)*this.gridsPerFloor+this.gridsPerFloor-vpGrids+pad;tc=Math.min(tc,maxCam);this.cameraGrid+=(tc-this.cameraGrid)*.12;
+    document.getElementById('hud-current').textContent=(this.elevatorGrid/this.gridsPerFloor+1).toFixed(2)+'F';
     this.render();
     if(this.state==='rising'||this.state==='stopping')this.animId=requestAnimationFrame(t=>this.loop(t));
   },
@@ -953,10 +1001,10 @@ const Game={
     const shaftGrad=ctx.createLinearGradient(shaftL,0,shaftL+shaftW,0);shaftGrad.addColorStop(0,'#12161F');shaftGrad.addColorStop(.5,'#1A1F2A');shaftGrad.addColorStop(1,'#12161F');ctx.fillStyle=shaftGrad;ctx.fillRect(shaftL,0,shaftW,H);
     ctx.strokeStyle='#2B3139';ctx.lineWidth=1;ctx.strokeRect(shaftL,0,shaftW,H);
     ctx.strokeStyle='#252A35';ctx.lineWidth=1;[carL-3,carL+carW+3].forEach(rx=>{ctx.beginPath();ctx.setLineDash([2,8]);ctx.moveTo(rx,0);ctx.lineTo(rx,H);ctx.stroke();ctx.setLineDash([])});
-    const sG=Math.floor(this.cameraGrid),eG=Math.ceil(this.cameraGrid+this.VISIBLE_FLOORS*this.GRIDS_PER_FLOOR);
-    for(let g=sG;g<=eG;g++){const sy=H-(g-this.cameraGrid)*gH;if(sy<-50||sy>H+50)continue;const isFloor=g%this.GRIDS_PER_FLOOR===0;if(isFloor){ctx.strokeStyle='#2B3139';ctx.lineWidth=1.5;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(shaftL,sy);ctx.lineTo(W-4,sy);ctx.stroke();const fn=Math.floor(g/this.GRIDS_PER_FLOOR)+1;if(fn>=1&&fn<=18){ctx.fillStyle='#848E9C';ctx.font=`${Math.max(11,fH*.3)}px ${this._font}`;ctx.textAlign='center';ctx.fillText(fn,numW/2,sy+fH*.12)}}else{ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;ctx.setLineDash([3,8]);ctx.beginPath();ctx.moveTo(shaftL+10,sy);ctx.lineTo(W-14,sy);ctx.stroke();ctx.setLineDash([])}}
+    const sG=Math.floor(this.cameraGrid),eG=Math.ceil(this.cameraGrid+this.VISIBLE_FLOORS*this.gridsPerFloor);
+    for(let g=sG;g<=eG;g++){const sy=H-(g-this.cameraGrid)*gH;if(sy<-50||sy>H+50)continue;const isFloor=g%this.gridsPerFloor===0;if(isFloor){ctx.strokeStyle='#2B3139';ctx.lineWidth=1.5;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(shaftL,sy);ctx.lineTo(W-4,sy);ctx.stroke();const fn=Math.floor(g/this.gridsPerFloor)+1;if(fn>=1&&fn<=18){ctx.fillStyle='#848E9C';ctx.font=`${Math.max(11,fH*.3)}px ${this._font}`;ctx.textAlign='center';ctx.fillText(fn,numW/2,sy+fH*.12)}}else{ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=.5;ctx.setLineDash([3,8]);ctx.beginPath();ctx.moveTo(shaftL+10,sy);ctx.lineTo(W-14,sy);ctx.stroke();ctx.setLineDash([])}}
     const tSY=H-(this.targetGrid-this.cameraGrid)*gH;if(tSY>-30&&tSY<H+30){const glow=ctx.createRadialGradient(carL+carW/2,tSY,2,carL+carW/2,tSY,fH*1.2);glow.addColorStop(0,'rgba(240,185,11,.25)');glow.addColorStop(1,'rgba(240,185,11,0)');ctx.fillStyle=glow;ctx.fillRect(shaftL,tSY-fH,shaftW,fH*2);ctx.strokeStyle='#F0B90B';ctx.lineWidth=2.5;ctx.shadowColor='rgba(240,185,11,.5)';ctx.shadowBlur=8;ctx.beginPath();ctx.moveTo(shaftL,tSY);ctx.lineTo(W-4,tSY);ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle='#F0B90B';ctx.beginPath();ctx.arc(shaftL-10,tSY,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#F0B90B';ctx.font=`${Math.max(10,fH*.25)}px ${this._font}`;ctx.textAlign='right';ctx.fillText('⭐',shaftL-16,tSY-8)}
-    const eSY=H-(this.elevatorGrid-this.cameraGrid)*gH;const carH=fH*.65,carT=eSY-carH/2;if(carT>-carH&&carT<H+carH){const cx=Math.round(carL),cy=Math.round(carT),cw=Math.round(carW),ch=Math.round(carH);ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(cx+3,cy+3,cw,ch);const carGrad=ctx.createLinearGradient(cx,cy,cx+cw,cy+ch);carGrad.addColorStop(0,'#4B8EFF');carGrad.addColorStop(.5,'#3B7CFF');carGrad.addColorStop(1,'#2563EB');ctx.fillStyle=carGrad;this.roundRect(ctx,cx,cy,cw,ch,6);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=2;this.roundRect(ctx,cx+1,cy+1,cw-2,ch-2,5);ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;this.roundRect(ctx,cx+4,cy+4,cw-8,ch-8,3);ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(cx+cw/2,cy+5);ctx.lineTo(cx+cw/2,cy+ch-5);ctx.stroke();const cf=this.elevatorGrid/this.GRIDS_PER_FLOOR+1;ctx.fillStyle='#fff';ctx.font=`bold ${Math.max(9,fH*.22)}px ${this._font}`;ctx.textAlign='center';ctx.fillText(cf.toFixed(0),cx+cw/2,cy+ch/2+3)}
+    const eSY=H-(this.elevatorGrid-this.cameraGrid)*gH;const carH=fH*.65,carT=eSY-carH/2;if(carT>-carH&&carT<H+carH){const cx=Math.round(carL),cy=Math.round(carT),cw=Math.round(carW),ch=Math.round(carH);ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(cx+3,cy+3,cw,ch);const carGrad=ctx.createLinearGradient(cx,cy,cx+cw,cy+ch);carGrad.addColorStop(0,'#4B8EFF');carGrad.addColorStop(.5,'#3B7CFF');carGrad.addColorStop(1,'#2563EB');ctx.fillStyle=carGrad;this.roundRect(ctx,cx,cy,cw,ch,6);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=2;this.roundRect(ctx,cx+1,cy+1,cw-2,ch-2,5);ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;this.roundRect(ctx,cx+4,cy+4,cw-8,ch-8,3);ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(cx+cw/2,cy+5);ctx.lineTo(cx+cw/2,cy+ch-5);ctx.stroke();const cf=this.elevatorGrid/this.gridsPerFloor+1;ctx.fillStyle='#fff';ctx.font=`bold ${Math.max(9,fH*.22)}px ${this._font}`;ctx.textAlign='center';ctx.fillText(cf.toFixed(0),cx+cw/2,cy+ch/2+3)}
     const gY=H-(-this.cameraGrid)*gH;if(gY>0&&gY<H){ctx.fillStyle='#1C2030';ctx.fillRect(0,gY,W,H-gY);ctx.fillStyle='#2B3139';ctx.fillRect(0,gY,W,3)}
   },
   roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath()},
